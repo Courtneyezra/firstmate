@@ -142,6 +142,8 @@ Forced secondmate cleanup recursively preflights every Herdr child endpoint and 
 Durable task records are erased only once the exact pane is confirmed gone through its structured presence: after every close path, only a structured not-found response counts as gone, while a present or unknown result retains every record with a visible, retryable error.
 Missing or malformed endpoint identity and missing confirmation machinery are ambiguity, never proof of a gone pane, and refuse record removal the same way.
 If lock, snapshot, pane identity, or restoration is ambiguous, cleanup warns and preserves the journal for manual inspection.
+That session lock's namespace is scoped to the calling user's uid, so a host must have its Firstmate processes stopped before its Herdr or Firstmate binaries change rather than being upgraded underneath live panes.
+Across such an upgrade a still-running pre-change process holds the old unscoped `/tmp/firstmate-herdr-presentation` path while a post-change process holds the uid-scoped one - the two no longer mutually exclude, so a concurrent presentation workspace reorder can run unserialized.
 
 Recovery is deliberately conservative and presentation-only.
 An existing journal suppresses another projected create.

@@ -25,10 +25,11 @@ FM_HERDR_CI_VERSION=0.9.0
 FM_HERDR_CI_TAG="v${FM_HERDR_CI_VERSION}"
 FM_HERDR_CI_MIN_PROTOCOL=22
 # Bounded download ceiling (bytes). The largest official 0.9.0 asset is the
-# linux-x86_64 build at 24,644,488 bytes. Keep the ceiling well clear of the
-# current assets so ordinary release growth cannot turn this bound into a
-# spurious download failure; it is a runaway-transfer guard, not a size pin.
-FM_HERDR_CI_MAX_BYTES=40000000
+# linux-x86_64 build at 24,644,488 bytes, so this bound clears every pinned
+# asset. It is a runaway-transfer guard, not a size pin: the assets below are
+# pinned by exact tag and SHA-256 and cannot grow without a re-pin, which
+# revisits this constant alongside the checksums.
+FM_HERDR_CI_MAX_BYTES=25000000
 # Canonical repository after the GitHub organization migration announced in the
 # 0.8.0 notes. The old ogulcancelik/herdr path still 301-redirects, but pin the
 # name the project publishes under rather than depend on that redirect.

@@ -4739,11 +4739,20 @@ fi
 # own review loop starts a Lavish server of its own, and lavish-axi's default
 # port is one machine-wide resource, so without this a worker under a second
 # login would contend for the port its own home already owns
-# (bin/fm-lavish-lib.sh). A resolution failure is not worth refusing a spawn
-# over - Lavish is optional for most work - so the launch continues with the
-# worker on the vendor default, which is exactly where it was before.
+# (bin/fm-lavish-lib.sh). A port that cannot be RESOLVED is not worth refusing a
+# spawn over - Lavish is optional for most work - so the launch continues with
+# the worker on the vendor default, which is exactly where it was before. A send
+# that leaves the export unsubmitted in the composer is a different fact and
+# refuses like every other send on this channel, because the launch command
+# would otherwise be appended on top of that residue.
 if SPAWN_LAVISH_PORT=$(fm_lavish_port 2>/dev/null); then
-  spawn_send_text_line "$T" "export LAVISH_AXI_PORT=$SPAWN_LAVISH_PORT" || true
+  LAVISH_SEND_STATUS=0
+  spawn_send_text_line "$T" "export LAVISH_AXI_PORT=$SPAWN_LAVISH_PORT" \
+    || LAVISH_SEND_STATUS=$?
+  if [ "$LAVISH_SEND_STATUS" -eq 2 ]; then
+    echo "error: Lavish port input could not be cleared for $W; refusing to append the launch command" >&2
+    exit 1
+  fi
 fi
 # Mark the pane as a task worker so bin/fm-test-run.sh can refuse to run the
 # suite in the repository's primary checkout. Ship and scout workers are the

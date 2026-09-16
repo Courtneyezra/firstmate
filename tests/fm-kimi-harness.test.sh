@@ -96,6 +96,11 @@ case "${1:-}" in
   list-windows) exit 0 ;;
   has-session|new-session|new-window|kill-window) exit 0 ;;
   send-keys)
+    if [ "${FM_FAKE_LAVISH_SEND_UNSAFE:-no}" = yes ]; then
+      for arg in "$@"; do
+        case "$arg" in "export LAVISH_AXI_PORT="*) exit 2 ;; esac
+      done
+    fi
     prev=
     literal=
     for arg in "$@"; do
@@ -263,6 +268,7 @@ run_spawn() {
     FM_FAKE_KIMI_SWALLOWED="$case_dir/kimi.swallowed" \
     FM_FAKE_KIMI_SWALLOW_FIRST="${FM_FAKE_KIMI_SWALLOW_FIRST:-no}" \
     FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
+    FM_FAKE_LAVISH_SEND_UNSAFE="${FM_FAKE_LAVISH_SEND_UNSAFE:-no}" \
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/launch-brief.md" \
     FM_KIMI_READY_POLLS="${FM_KIMI_READY_POLLS:-2}" FM_KIMI_DELIVERY_POLLS=2 FM_KIMI_POLL_INTERVAL=0 \
     PATH="$fakebin:$BASE_PATH" \
@@ -428,6 +434,26 @@ test_kimi_spawn_refuses_shared_task_temp_root() {
     || fail "kimi spawn did not type a short line sourcing its namespaced launch command"
   rm -rf "$task_tmp" "$launch_dir"
   pass "fm-spawn: unsafe task roots are refused, owned roots are tightened, and launch files stay unique and 0600"
+}
+
+# Status 2 on this channel means the export was typed into the composer and
+# could not be cleared. Continuing would type the launch command on top of that
+# residue, so the spawn must stop instead of starting the agent on a
+# concatenated command line.
+test_uncleared_lavish_port_input_stops_before_launch() {
+  local id rec out rc
+  id="kimi-lavish-unsafe-z1-$$"
+  rec=$(make_spawn_case kimi-lavish-unsafe "$id")
+  read_spawn_record "$rec"
+  out=$(FM_FAKE_LAVISH_SEND_UNSAFE=yes run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  [ "$rc" -ne 0 ] || fail "an uncleared Lavish port export did not stop the spawn: $out"
+  assert_contains "$out" "refusing to append the launch command" \
+    "the refusal did not say why the spawn stopped: $out"
+  [ ! -s "$CASE_DIR/launch.log" ] \
+    || fail "the launch command was appended on top of unsubmitted input: $(cat "$CASE_DIR/launch.log")"
+  pass "an uncleared Lavish port export stops the spawn before the launch command"
 }
 
 test_kimi_hook_install_is_surgical_idempotent_and_removable() {
@@ -1125,6 +1151,7 @@ test_kimi_hook_fails_closed_on_missing_malformed_or_partial_config
 test_kimi_hook_install_refuses_without_jq
 test_kimi_launch_then_send_is_verified
 test_kimi_spawn_refuses_shared_task_temp_root
+test_uncleared_lavish_port_input_stops_before_launch
 test_kimi_hook_is_silent_and_requires_registered_workspace_token
 test_kimi_spawn_refuses_unsafe_global_config_before_pane_creation
 test_kimi_teardown_removes_pointer_and_registry_token

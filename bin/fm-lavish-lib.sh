@@ -86,7 +86,8 @@ fm_lavish_port() {
   [ -n "$config" ] || { [ -z "${FM_HOME-}" ] || config="$FM_HOME/config"; }
   if [ -n "$config" ] && [ -f "$config/lavish-port" ] && [ ! -L "$config/lavish-port" ]; then
     IFS= read -r pin < "$config/lavish-port" 2>/dev/null || [ -n "$pin" ] || pin=''
-    pin=${pin//[[:space:]]/}
+    pin=${pin#"${pin%%[![:space:]]*}"}
+    pin=${pin%"${pin##*[![:space:]]}"}
     fm_lavish_port_valid "$pin" || {
       printf 'error: %s/lavish-port must hold one port from %s to %s: %s\n' \
         "$config" "$FM_LAVISH_PORT_MIN" "$FM_LAVISH_PORT_MAX" "$pin" >&2

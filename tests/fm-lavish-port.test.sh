@@ -80,7 +80,9 @@ printf '%s' 4597 > "$H/config/lavish-port"
 assert_equals 4597 "$(FM_HOME="$H" LAVISH_AXI_PORT='' fm_lavish_port)" \
   "a pin written without a trailing newline is honored"
 
-for bad in nonsense 80 99999 '4387 4388' '' '04387'; do
+# '43 91' is the discriminating one: whitespace INSIDE the value must refuse
+# rather than close up into 4391, a port the operator never named.
+for bad in nonsense 80 99999 '4387 4388' '43 91' '' '04387'; do
   printf '%s\n' "$bad" > "$H/config/lavish-port"
   if out=$(FM_HOME="$H" LAVISH_AXI_PORT='' fm_lavish_port 2>&1); then
     fail "a malformed pin ('$bad') resolved to $out instead of refusing"

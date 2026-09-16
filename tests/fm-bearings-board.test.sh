@@ -537,7 +537,21 @@ test_rebuild_moves_an_armed_listener_onto_a_changed_pin() {
     || fail "the re-armed board has nothing listening"
   [ "$(run_decisions "$home" binding "$sid")" = "(any)" ] \
     || fail "the moved board has no keyed-answer binding, so a tap has nowhere to go"
-  pass "a rebuild re-arms the board listener onto a changed pin"
+
+  # The same move on the reopened path: the captain ends the session from the
+  # browser, the pin changes, and the rebuild must still say where it went.
+  end_session_as_captain "$home"
+  printf '4595\n' > "$home/config/lavish-port"
+  : > "$home/lavish-state/ports"
+  out=$(run_board "$home" build "$data") || fail "the reopened rebuild after the pin change failed: $out"
+  assert_contains "$out" "session: reopened" "the reopened path was not exercised: $out"
+  assert_contains "$out" "port-moved: $sid 4593 -> 4595" \
+    "a reopened rebuild moved the listener without reporting it: $out"
+  assert_equals 4595 "$(run_lavish "$home" armed-port "$board")" \
+    "the reopened rebuild did not re-arm onto the new pin"
+  [ "$(run_decisions "$home" binding "$sid")" = "(any)" ] \
+    || fail "the reopened move left the board without a keyed-answer binding"
+  pass "a rebuild re-arms the board listener onto a changed pin and names the move"
 }
 
 test_build_refuses_a_template_without_exactly_one_slot() {

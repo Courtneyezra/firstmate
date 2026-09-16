@@ -617,7 +617,9 @@ Write the port alone in `config/lavish-port`:
 The file is local and gitignored, and it is not inherited into secondmate homes.
 Pin the same port in every home that runs under one login, for the shared-state reason above.
 An ambient `LAVISH_AXI_PORT` outranks the pin for the command that carries it.
-A malformed pin or ambient value refuses rather than falling back to the vendor default, because silently returning to the shared port is the collision this resolution exists to prevent.
+Whitespace around the pinned port is ignored.
+A pin with whitespace inside the port, or a pin that is a symlink or other non-regular file, is malformed; write the port into each home's own file instead.
+A malformed pin or ambient value refuses rather than falling back to the derived or vendor default, because silently returning to the shared port is the collision this resolution exists to prevent.
 
 An armed review listener carries the port it was armed with, so the next board rebuild (`/bearings lavish`) re-arms the board's own listener onto the new port by itself and reports it as `port-moved:`; changing a pin needs no separate re-arm step.
 A listener armed before this resolution existed carries no port and resolves it like every other path.

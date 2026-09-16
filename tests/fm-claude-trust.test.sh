@@ -618,8 +618,8 @@ test_refused_spawn_leaves_no_task_state() {
     || fail "a refused spawn stranded a busy record nothing can clear"
   [ ! -e "$home/state/$id.busy-gen" ] \
     || fail "a refused spawn stranded a busy generation nothing can clear"
-  [ ! -e "/tmp/fm-$id" ] \
-    || { rm -rf "/tmp/fm-$id"; fail "a refused spawn stranded a temp root no teardown can find"; }
+  [ ! -e "/tmp/fm-$(id -u)-$id" ] \
+    || { rm -rf "/tmp/fm-$(id -u)-$id"; fail "a refused spawn stranded a temp root no teardown can find"; }
   pass "fm-spawn.sh: a trust-refused claude spawn leaves no task state behind"
 }
 

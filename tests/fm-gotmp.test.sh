@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Behavior tests for per-task GOTMPDIR support (fm-gotmp).
 #
-# fm-spawn gives each task a temp root /tmp/fm-<id>/ with Go's build temp nested at
-# gotmp/, exports GOTMPDIR into the crewmate pane, and records tasktmp= in the task's
-# meta. fm-teardown reads tasktmp= and removes the whole root on cleanup.
+# fm-spawn gives each task a per-login temp root (bin/fm-task-tmp-lib.sh) with Go's
+# build temp nested at gotmp/, exports GOTMPDIR into the crewmate pane, and records
+# tasktmp= in the task's meta. fm-teardown reads tasktmp= and removes the whole root
+# on cleanup.
 #
-# These tests exercise fm-teardown directly as a subprocess against a fake FM_HOME/FM_ROOT
+# The fm-task-tmp-lib.sh tests drive the library's functions with a PATH-stubbed
+# `id` to simulate a second login, and prove a foreign or symlinked path is refused.
+# The remaining tests exercise fm-teardown directly as a subprocess against a fake FM_HOME/FM_ROOT
 # built so the real script resolves into it, with stub helper scripts.
 # The isolated fm-spawn subprocess in fm-kimi-harness.test.sh covers temp-root creation,
 # metadata publication, and the pane environment export.
@@ -19,6 +22,8 @@ export FM_GATE_REFUSE_BYPASS=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEARDOWN="$ROOT/bin/fm-teardown.sh"
+# shellcheck source=bin/fm-task-tmp-lib.sh
+. "$ROOT/bin/fm-task-tmp-lib.sh"
 
 fail() {
   printf 'not ok - %s\n' "$1" >&2
@@ -129,6 +134,83 @@ tasktmp=$tasktmp
 META
   printf '%s' "$fake"
 }
+
+# --- fm-task-tmp-lib.sh side (per-login temp root) ---
+
+# Run one lib function in a subshell whose `id -u` reports the given uid.
+as_uid() { # <uid> <function> [args...]
+  local uid=$1
+  shift
+  local stub="$TMP_ROOT/id-stub-$uid"
+  mkdir -p "$stub"
+  # shellcheck disable=SC2016 # the stub script expands its own arguments
+  printf '#!/bin/sh\n[ "$1" = -u ] && { echo %s; exit 0; }\nexec /usr/bin/id "$@"\n' "$uid" > "$stub/id"
+  chmod +x "$stub/id"
+  (PATH="$stub:$PATH" "$@")
+}
+
+test_task_tmp_root_is_distinct_per_login() {
+  local base="$TMP_ROOT/tmpbase-distinct" a b real
+  mkdir -p "$base"
+  a=$(as_uid 4101 fm_task_tmp_root "$base" same-task) || fail "root for uid 4101 not resolved"
+  b=$(as_uid 4102 fm_task_tmp_root "$base" same-task) || fail "root for uid 4102 not resolved"
+  [ "$a" = "$base/fm-4101-same-task" ] || fail "unexpected root for uid 4101: $a"
+  [ "$b" = "$base/fm-4102-same-task" ] || fail "unexpected root for uid 4102: $b"
+  [ "$a" != "$b" ] || fail "two logins with one task id share a temp root ($a)"
+  real=$(fm_task_tmp_root "$base" same-task) || fail "root for the real login not resolved"
+  fm_task_tmp_prepare "$real" || fail "prepare refused a fresh root"
+  [ -d "$real/gotmp" ] || fail "prepare did not create gotmp/"
+  [ "$(fm_task_tmp_owner_uid "$real")" = "$(id -u)" ] || fail "prepared root not owned by this login"
+  case "$(ls -ld "$real")" in
+    drwx------*) ;;
+    *) fail "prepared root is not private: $(ls -ld "$real")" ;;
+  esac
+  fm_task_tmp_prepare "$real" || fail "prepare refused this login's own existing root (relaunch reuse)"
+  pass "fm-task-tmp-lib: two logins with one task id get distinct private roots"
+}
+
+test_task_tmp_refuses_foreign_owned_path() {
+  local base="$TMP_ROOT/tmpbase-foreign" foreign out
+  mkdir -p "$base"
+  # The real login pre-creates the path another login (simulated uid 4201)
+  # would use, so that login sees it as foreign-owned.
+  foreign=$(as_uid 4201 fm_task_tmp_root "$base" shared-id)
+  mkdir -p "$foreign"
+  [ "$(fm_task_tmp_owner_uid "$foreign")" != 4201 ] || fail "precondition: fixture owner equals the simulated uid"
+  if out=$(as_uid 4201 fm_task_tmp_prepare "$foreign" 2>&1); then
+    fail "prepare adopted a foreign-owned root"
+  fi
+  case "$out" in
+    *"refusing to use it"*) ;;
+    *) fail "foreign-owned refusal lacked a diagnostic: $out" ;;
+  esac
+  [ ! -e "$foreign/gotmp" ] || fail "prepare wrote into a foreign-owned root"
+  as_uid 4201 fm_task_tmp_owned "$foreign" && fail "foreign-owned root reported as owned"
+  pass "fm-task-tmp-lib: a pre-existing foreign-owned root is refused, not used"
+}
+
+test_task_tmp_refuses_symlink_and_file() {
+  local base="$TMP_ROOT/tmpbase-link" root target
+  mkdir -p "$base"
+  root=$(fm_task_tmp_root "$base" linked)
+  target="$TMP_ROOT/link-target"
+  mkdir -p "$target"
+  ln -s "$target" "$root"
+  if fm_task_tmp_prepare "$root" 2>/dev/null; then
+    fail "prepare followed a pre-planted symlink"
+  fi
+  [ ! -e "$target/gotmp" ] || fail "prepare wrote through a symlinked root"
+  root=$(fm_task_tmp_root "$base" plainfile)
+  : > "$root"
+  if fm_task_tmp_prepare "$root" 2>/dev/null; then
+    fail "prepare accepted a regular file as the root"
+  fi
+  pass "fm-task-tmp-lib: a symlink or non-directory root is refused"
+}
+
+test_task_tmp_root_is_distinct_per_login
+test_task_tmp_refuses_foreign_owned_path
+test_task_tmp_refuses_symlink_and_file
 
 # --- fm-teardown side (real subprocess) ---
 

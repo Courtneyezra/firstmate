@@ -563,6 +563,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
 # shellcheck source=bin/fm-lavish-lib.sh
 . "$SCRIPT_DIR/fm-lavish-lib.sh"
+# shellcheck source=bin/fm-task-tmp-lib.sh
+. "$SCRIPT_DIR/fm-task-tmp-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -3972,26 +3974,30 @@ agy)
   ;;
 esac
 
-# Per-task temp root: /tmp/fm-<id>/ with Go's build temp nested at gotmp/. Go won't
-# create GOTMPDIR, so mkdir before it is used; fm-teardown removes the whole root.
-# Nested (not a bare /tmp/fm-<id>/gotmp) so other per-task temp can live alongside
-# later, and teardown cleans one deterministic path. GOTMPDIR (not TMPDIR) is the
-# targeted knob: TMPDIR is too broad (affects every program's temp, not just Go's).
-# The root is private (0700) because its path is predictable under a shared
-# /tmp: a root that already exists is reused only as a real directory owned by
-# this user and writable by nobody else, then tightened, so no other local user
-# can plant or swap a file in it. The staged launch command lives in a sibling
-# directory namespaced by home identity, not in this shared per-id root.
-TASK_TMP="/tmp/fm-$ID"
-if ! (umask 077 && mkdir "$TASK_TMP") 2>/dev/null; then
-  if [ -L "$TASK_TMP" ] || [ ! -d "$TASK_TMP" ] || [ ! -O "$TASK_TMP" ] ||
-    [ -n "$(find "$TASK_TMP" -prune \( -perm -g=w -o -perm -o=w \) -print 2>/dev/null)" ] ||
-    ! chmod 700 "$TASK_TMP"; then
-    echo "error: task temp root $TASK_TMP already exists and is not a private directory owned by this user; refusing to stage the launch command there; inspect and remove it, then retry" >&2
-    exit 1
+# Per-task temp root with Go's build temp nested at gotmp/; bin/fm-task-tmp-lib.sh
+# owns the per-login path and the ownership refusal. Go won't create GOTMPDIR, so
+# it is made before use; fm-teardown removes the whole recorded root. GOTMPDIR
+# (not TMPDIR) is the targeted knob: TMPDIR is too broad (affects every
+# program's temp, not just Go's). A relaunch keeps a recorded root this login
+# still owns, including a pre-per-login /tmp/fm-<id>, so teardown's recorded
+# path stays the one in use. The root is private (0700) and a pre-existing one
+# is adopted only when it is this login's own directory that nobody else can
+# write to; the staged launch command lives in a sibling directory namespaced by
+# home identity, not in this root.
+TASK_TMP=
+if [ "$RELAUNCH" -eq 1 ]; then
+  TASK_TMP=$(grep '^tasktmp=' "$RELAUNCH_META" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+  if [ -n "$TASK_TMP" ] && ! fm_task_tmp_owned "$TASK_TMP"; then
+    TASK_TMP=
   fi
 fi
-mkdir -p "$TASK_TMP/gotmp"
+if [ -z "$TASK_TMP" ]; then
+  TASK_TMP=$(fm_task_tmp_root /tmp "$ID") || {
+    echo "error: could not resolve the per-login task temp root for $ID" >&2
+    exit 1
+  }
+fi
+fm_task_tmp_prepare "$TASK_TMP" || exit 1
 
 # Per-harness turn-end hook where enabled: a file that touches
 # state/<id>.turn-ended when the agent finishes a turn. Worktree-resident hooks

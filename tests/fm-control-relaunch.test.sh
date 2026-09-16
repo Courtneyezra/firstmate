@@ -224,7 +224,9 @@ EOF
   printf '%s\n' "fm-$id" > "$dir/fake/windows"
   printf '%s' "$ses" > "$dir/fake/session-name"
   printf '%s' "$wt" > "$dir/fake/cwd"
-  TASK_TMPS+=("/tmp/fm-$id")
+  # The legacy recorded root is reused only when it exists; otherwise relaunch
+  # creates the per-login root (bin/fm-task-tmp-lib.sh).
+  TASK_TMPS+=("/tmp/fm-$id" "/tmp/fm-$(id -u)-$id")
 }
 
 run_control() {  # <case-dir> <args...>
@@ -1051,6 +1053,7 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
     } > "$home/state/$id.meta"
     printf '%s\n' "fm-$id" > "$dir/fake/windows"
     printf '%s' "$dir/wt" > "$dir/fake/cwd"
+    TASK_TMPS+=("/tmp/fm-$(id -u)-$id")
 
     out=$(FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
       "$PROMOTE" "$id" --mode "$mode" --yolo off 2>&1) \

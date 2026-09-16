@@ -3253,7 +3253,7 @@ SH
 }
 
 test_presentation_session_lock_path_is_shared_across_homes() {
-  local dir log resp fb path_a path_b path_other path_tmp path_private
+  local dir log resp fb path_a path_b path_other path_tmp path_private path_other_uid
   dir="$TMP_ROOT/presentation-session-lock"; mkdir -p "$dir/responses" "$dir/sockdir"
   log="$dir/log"; resp="$dir/responses"; : > "$log"
   : > "$dir/sockdir/fmtest.sock"
@@ -3270,8 +3270,14 @@ test_presentation_session_lock_path_is_shared_across_homes() {
     || fail "session lock path resolution failed for home B"
   [ "$path_a" = "$path_b" ] || fail "same session/socket must resolve one shared lock path"
   case "$path_a" in
-    /tmp/firstmate-herdr-presentation/order-*.lock) ;;
-    *) fail "session lock path must use the shared machine namespace: $path_a" ;;
+    "/tmp/firstmate-herdr-presentation-$(id -u)/order-"*.lock) ;;
+    *) fail "session lock path must use the shared per-user machine namespace: $path_a" ;;
+  esac
+  # The namespace must be uid-qualified. An unqualified name cannot satisfy the
+  # uid-ownership validation for a second user of the same host, which leaves
+  # that user's pane closes refusing forever.
+  case "$path_a" in
+    /tmp/firstmate-herdr-presentation/*) fail "session lock namespace must be uid-qualified: $path_a" ;;
   esac
   case "$path_a" in
     */state/*) fail "session lock path must not live under a home state directory: $path_a" ;;
@@ -3295,6 +3301,25 @@ test_presentation_session_lock_path_is_shared_across_homes() {
     [ "$path_tmp" = "$path_private" ] \
       || fail "symlink parent socket paths must resolve one lock: $path_tmp vs $path_private"
   fi
+  # Two users of one host must never contend for the same namespace directory:
+  # its validation requires uid ownership, so a shared name would lock the
+  # second user out permanently. Drive the uid apart and assert the paths do.
+  mkdir -p "$dir/uidbin"
+  # The namespace only ever asks for `id -u`; anything else is a fixture bug and
+  # should fail loudly rather than silently fall through to the real id.
+  # shellcheck disable=SC2016 # The single quotes are deliberate: this is the fake id's own script body.
+  printf '#!/bin/sh\n[ "$1" = -u ] || { echo "fake id: unexpected args: $*" >&2; exit 64; }\necho 4242\n' > "$dir/uidbin/id"
+  chmod 0755 "$dir/uidbin/id"
+  printf '%s\n' "{\"sessions\":[{\"name\":\"fmtest\",\"running\":true,\"socket_path\":\"$dir/sockdir/fmtest.sock\"}]}" > "$resp/6.out"
+  path_other_uid=$(PATH="$dir/uidbin:$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT") \
+    || fail "namespace resolution failed for a second uid"
+  [ "$path_other_uid" = "/tmp/firstmate-herdr-presentation-4242" ] \
+    || fail "a second uid must get its own namespace, got: $path_other_uid"
+  case "$path_a" in
+    "$path_other_uid"/*) fail "two uids must not share one lock namespace: $path_a" ;;
+  esac
+
   pass "herdr presentation lock: one path per session/socket across homes"
 }
 

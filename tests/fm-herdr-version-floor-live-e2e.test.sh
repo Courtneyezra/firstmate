@@ -42,12 +42,14 @@ case "$(uname -s)/$(uname -m)" in
   *) echo "skip: no pinned Herdr release asset for $(uname -s)/$(uname -m)"; exit 0 ;;
 esac
 
-# Digests are pinned for every supported asset measured on 2026-08-05.
+# Digests are pinned for every supported asset; v0.7.5 through v0.8.0 were
+# measured on 2026-08-05 and v0.9.0 on 2026-09-16.
 # tag<TAB>expected-version-prefix<TAB>expected-verdict<TAB>macos-aarch64-sha256<TAB>macos-x86_64-sha256<TAB>linux-aarch64-sha256<TAB>linux-x86_64-sha256
 RELEASES=$(cat <<'EOF'
 v0.7.5	0.7.5	below	37350546b0012555943b92eaf962665de4e264395baeb44227b8015e8ff5b0d6	3fe50c4a63dc8102306b1322178628ddb3655cd3ae56d784f094153408d69e62	32e763a1499a6b694b1d708e4f062b743be1da9f34fcfa4d212d6db6fe09a8b9	3dc83288073e4c2d3c679a30e7be97bcca9141c6fd17dbbb9219142e95c59253
 preview-2026-07-29-44b3adb12552	0.7.5-preview	below	99941b4a40e852c8f21694c7ec1e96f85abd4f764d9f667757c65fae6e4b065b	b9316cdff4802f325f6b77b83ea36cd33deb8da4ef9efa8454423b0ce8de77fc	2167fb9127d0a67c1dad368d54e6468fd7c2a3858b832922c7f0c264d012be13	2d50d64ab849c3d0f5d0d53e0bebd00fa94d5ed120797532c8fcfd1a679ebc19
 v0.8.0	0.8.0	above	d53a9f93fccfdfcc55632927bf51002f5add0aa7990bcdf508ffbd84ac658178	77cb5afd6c8fcaaaf3bc28e474ec01c209331ad08094e20d7f8aa9b0bb78d649	f647ac66468d9efbc642fe534fb284468f0aea60641606fc008dfc0d82a3ca87	b872ea7e40fa2cb17e857ac9b62b1bf26db7b403c622f5d2f3f5b35f6e9acd28
+v0.9.0	0.9.0	above	32b53df09872628059c789a69f02a6b8e29e14ddf26711421f3463f70c1aef17	d0c920b2a126a74809fa1491411c9a097a44786cac9c2ca51b818a995581cf16	9c8db20fb7e7427b138d5367113f1621ffd319f2f65d6f009e2594029115f0d2	4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f
 EOF
 )
 
@@ -112,7 +114,7 @@ while IFS=$'\t' read -r TAG VERSION_PREFIX EXPECTED MACOS_AARCH64_DIGEST MACOS_X
   DIR="$TMP_ROOT/$TAG"
   mkdir -p "$DIR"
   if ! curl -fsSL --max-time 300 -o "$DIR/herdr" \
-    "https://github.com/ogulcancelik/herdr/releases/download/$TAG/$ASSET"; then
+    "https://github.com/herdrdev/herdr/releases/download/$TAG/$ASSET"; then
     fail "could not download the pinned Herdr $TAG $ASSET asset; the floor mapping is unverified"
   fi
   GOT_DIGEST=$(shasum -a 256 "$DIR/herdr" | awk '{print $1}')

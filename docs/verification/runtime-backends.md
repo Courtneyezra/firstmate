@@ -1010,8 +1010,9 @@ No reasoning-effort axis was found; `gemini --help` on 0.58.0 exposes no effort,
 ## Herdr
 
 The compatibility floor is protocol 14.
-The whole real-Herdr lane's latest active verification uses both Herdr 0.7.4 protocol 16 and Herdr 0.8.0 protocol 19 on macOS aarch64, while focused Herdr 0.7.5 protocol 17, earlier protocol-16, protocol-14, and 0.7.3 evidence is retained where it defines current behavior or fallbacks.
-Protocol 17 keeps every protocol-16 feature gate satisfied; the event and workspace-move floors remain 16.
+The pinned release the required real-Herdr lane installs and verifies is Herdr 0.9.0 protocol 22, and the retained Herdr 0.7.4 protocol 16 and Herdr 0.8.0 protocol 19 macOS aarch64 runs stay active for the below-floor and at-floor projection cases, while focused Herdr 0.7.5 protocol 17, earlier protocol-16, protocol-14, and 0.7.3 evidence is retained where it defines current behavior or fallbacks.
+Protocol 17 keeps every protocol-16 feature gate satisfied, and protocol 22 keeps all of them satisfied; the event and workspace-move floors remain 16.
+Because every gate is a minimum rather than a pin, one Firstmate serves the protocol-16 and protocol-22 generations at once, which is what lets a fleet upgrade its Herdr hosts one at a time.
 Default-on presentation projection has its own floor at Herdr 0.8.0, protocol 19, verified below.
 
 Core read-only probes:
@@ -1045,6 +1046,46 @@ The CLI matrix was checked directly:
 
 All destructive verification used `bin/fm-herdr-lab.sh` with a non-default `fm-lab-` name and a byte-identical default-session tripwire.
 No ambient `herdr server stop` command is a supported test operation.
+
+### Herdr 0.9.0 client and protocol 22
+
+Measured on 2026-09-16 against the official `herdr-linux-x86_64` v0.9.0 asset (sha256 `4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f`), run as a guarded named lab server so the host's own default session stayed on 0.7.4 throughout.
+The `real-herdr-gated` family was run end to end against that binary, covering spawn, endpoint liveness, agent-state classification, composer and send, tab and workspace calls, presentation projection, and teardown:
+
+```sh
+bin/fm-test-run.sh --family real-herdr-gated --fail-on-gate-skip 'herdr not found'
+```
+
+Every result this release changed was compared against the same suites run on Herdr 0.7.4 on the same host, so a difference is attributable to the release rather than to the machine.
+No behavior differed between the two.
+
+Core probes from the same binary:
+
+```text
+herdr 0.9.0
+{"client":22,"server":22}
+["pane.output_matched","pane.agent_status_changed","pane.scroll_changed"]
+```
+
+The subscription event kinds the native event fast-path subscribes to are unchanged, and the `agent_status` vocabulary the watcher classifies (`working`, `idle`, `done`, `blocked`, `unknown`) is unchanged.
+Comparing the two releases' own `herdr api schema --json`, the request surface is additive for every method Firstmate issues: `workspace.move`, `events.subscribe`, `pane.send_text`, `pane.send_keys`, `pane.close`, and `tab.close` have byte-identical request schemas, and `AgentInfo` and `ServerCapabilities` only gained fields.
+The single removed method, `agent.send`, is one Firstmate never calls.
+`workspace.close` gained an optional `close_group`, which Firstmate also never calls.
+
+Two 0.9.0 release changes were checked against the adapter rather than assumed:
+
+- Lifecycle subscriptions now start from live events instead of replaying retained history, so a client must subscribe before taking its initial snapshot. `fm_backend_herdr_wait_transition` already waits for the reader's `@subscribed` acknowledgement before its level reconcile, so it needs no change.
+- `herdr server --session <name>` still runs in the foreground and the server process still presents as `comm=herdr` with its session in argv, which is what `bin/fm-remote-herdr-owner-lib.sh` resolves through `lsof -U -a -c herdr`. Named session sockets remain at `~/.config/herdr/sessions/<name>/herdr.sock`.
+
+A 0.9.0 client pointed at a still-running 0.7.4 server reports the mixed pair honestly and refuses to claim compatibility:
+
+```text
+client 0.9.0 protocol 22 endpoint_protocol_generation 1
+server 0.7.4 protocol 16 compatible false restart_needed true server_binary_stale true
+```
+
+Upgrading a host's Herdr binary therefore requires restarting that host's server, which ends its running panes; the client and server must move together.
+The API socket is still not relocatable by `HERDR_CONFIG_PATH`, `XDG_CONFIG_HOME`, or `HOME` on 0.9.0, so a named non-`default` session remains the only local isolation.
 
 ### fm-remote server birth and login-keychain access
 
@@ -1369,6 +1410,7 @@ The floor's structural signal is the selected running server's protocol number, 
 | preview-2026-07-29-44b3adb12552 | 0.7.5-preview.2026-07-29-44b3adb12552 | 18 | yes | below |
 | preview-2026-08-04-d78e3d3b5126 | 0.8.0-preview.2026-08-04-d78e3d3b5126 | 19 | yes | above |
 | v0.8.0 | 0.8.0 | 19 | yes | above |
+| v0.9.0 | 0.9.0 | 22 | yes | above |
 
 No build lacking both fixes reaches protocol 19, and every pre-fix build tops out at 17, so protocol 19 is a safe structural expression of the 0.8.0 floor.
 The one post-fix build below it is a preview that still reports a 0.7.5 version, so it is conservatively treated as below the floor, which costs a preview build its projection and never lets an unfixed build through.

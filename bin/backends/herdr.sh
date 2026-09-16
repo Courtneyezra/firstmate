@@ -779,8 +779,22 @@ fm_backend_herdr_projection_workspace_label() {  # <task-id> <projection-id>
 # The path is never under any one home's state/ and secondmates never write the
 # primary home. Returns non-zero when the named session's socket cannot be
 # resolved unambiguously.
+#
+# The namespace carries the calling user's numeric uid because
+# fm_backend_herdr_presentation_lock_namespace_valid demands uid ownership and
+# mode 700. An unqualified shared name cannot satisfy that for two users of one
+# host: whoever creates the directory first owns it, and every other user's
+# validation then fails forever, so their pane closes refuse for good. A Herdr
+# session belongs to exactly one user anyway (its socket lives under that user's
+# own config directory), so scoping the namespace per uid loses no sharing - the
+# same user's homes, primary and secondmate alike, still meet on one path.
 fm_backend_herdr_presentation_lock_namespace() {
-  printf '%s' '/tmp/firstmate-herdr-presentation'
+  local uid
+  uid=$(id -u 2>/dev/null) || return 1
+  case "$uid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '/tmp/firstmate-herdr-presentation-%s' "$uid"
 }
 
 fm_backend_herdr_presentation_lock_namespace_mode() {

@@ -280,19 +280,29 @@ jobs:
           command -v treehouse >/dev/null || { echo "::error::treehouse not on PATH after install"; exit 1; }
           herdr --version
           treehouse --version
+          # bin/fm-install-herdr.sh is the single owner of the pin; read the
+          # expected version and protocol floor from it rather than restating
+          # them here, where a second copy silently drifts on every bump.
+          pin=$(bin/fm-install-herdr.sh --print-pin)
+          expected_version=$(printf '%s\n' "$pin" | sed -n 's/^version=//p')
+          expected_protocol=$(printf '%s\n' "$pin" | sed -n 's/^min_protocol=//p')
+          [ -n "$expected_version" ] && [ -n "$expected_protocol" ] || {
+            echo "::error::could not read the Herdr pin from bin/fm-install-herdr.sh"
+            exit 1
+          }
           status=$(herdr status --json)
           printf '%s\n' "$status"
           version=$(printf '%s' "$status" | jq -r '.client.version // empty')
           protocol=$(printf '%s' "$status" | jq -r '.client.protocol // empty')
-          [ "$version" = "0.7.4" ] || {
-            echo "::error::expected exact Herdr pin 0.7.4, got ${version:-<empty>}"
+          [ "$version" = "$expected_version" ] || {
+            echo "::error::expected exact Herdr pin $expected_version, got ${version:-<empty>}"
             exit 1
           }
           case "$protocol" in
             ''|*[!0-9]*) echo "::error::could not read client protocol"; exit 1 ;;
           esac
-          [ "$protocol" -ge 16 ] || {
-            echo "::error::herdr protocol $protocol is below the required floor 16"
+          [ "$protocol" -ge "$expected_protocol" ] || {
+            echo "::error::herdr protocol $protocol is below the required floor $expected_protocol"
             exit 1
           }
       - name: Start default Herdr session for fleet-state tripwire

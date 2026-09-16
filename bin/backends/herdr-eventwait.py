@@ -11,7 +11,8 @@ sub-second. The bash side normalizes each line through the shared transition
 shape and applies the single-owner policy table (bin/fm-transition-lib.sh); the
 bash side also decides when to stop and kills this reader.
 
-Wire protocol (verified: herdr 0.7.3, protocol 16, newline-delimited JSON):
+Wire protocol (verified: herdr 0.7.3, protocol 16, newline-delimited JSON;
+re-verified unchanged on herdr 0.9.0, protocol 22):
   request : {"id","method":"events.subscribe","params":{"subscriptions":[
              {"type":"pane.agent_status_changed","pane_id":P}, ...]}}\n
   ack     : {"id",...,"result":{"type":"subscription_started"}}\n

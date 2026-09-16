@@ -6,7 +6,8 @@ workspace ordering. It accepts only an exact workspace id and a non-negative
 insert index, sends only the non-destructive ``workspace.move`` method, and
 prints the verified JSON response.
 
-Wire protocol verified against Herdr 0.7.4, protocol 16:
+Wire protocol verified against Herdr 0.7.4, protocol 16, and re-verified
+unchanged against Herdr 0.9.0, protocol 22:
 
   request:  {"id":"fm-workspace-move","method":"workspace.move",
              "params":{"workspace_id":W,"insert_index":N}}\n

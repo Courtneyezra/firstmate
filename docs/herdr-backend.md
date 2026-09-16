@@ -150,6 +150,7 @@ Across such an upgrade a still-running pre-change process holds the old unscoped
 Recovery is deliberately conservative and presentation-only.
 An existing journal suppresses another projected create.
 Before any recovery mutation, Firstmate holds both the task spawn lock and the named-session presentation lock.
+A spawn keeps that presentation lock through its harness launch, so a concurrent spawn or recovery waits up to `FM_HERDR_PRESENTATION_LOCK_WAIT` seconds behind a live holder before a recovery refuses or a fresh spawn falls back flat; a dead holder's lock is reclaimed at once.
 A same-identity version 2 binding may replace one exact agent-free restart husk in place only when the physical home, session, metadata endpoint, unique token match, workspace shape and labels, parent identity and placement, and non-target focus snapshot all agree.
 The replacement tab and pane are created and verified before the old pane is rechecked and closed, then the journal advances atomically to the replacement endpoint before metadata publication.
 The reclaim path never moves, closes, deletes, or renames a workspace and never touches a parent, sibling, captain, or foreign pane.

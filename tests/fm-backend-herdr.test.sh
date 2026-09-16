@@ -3323,6 +3323,79 @@ test_presentation_session_lock_path_is_shared_across_homes() {
   pass "herdr presentation lock: one path per session/socket across homes"
 }
 
+# A live holder whose hold outlasts the old five-second budget must still be
+# waited out, a hold that outlasts the configured budget must be a clean
+# refusal that leaves the lock with its holder, and a dead holder must never
+# consume the budget.
+test_presentation_lock_bounded_wait_breach_path() {
+  local dir lock holder_pid status start elapsed
+  dir="$TMP_ROOT/presentation-lock-wait"; mkdir -p "$dir"
+  lock="$dir/order.lock"
+
+  start_presentation_lock_holder() {  # <release-after-seconds|hold>
+    rm -f "$dir/ready" "$dir/release"
+    ROOT="$ROOT" LOCK="$lock" READY="$dir/ready" RELEASE="$dir/release" AFTER=$1 bash -c '
+      . "$ROOT/bin/fm-wake-lib.sh"
+      fm_lock_try_acquire "$LOCK" || exit 1
+      : > "$READY"
+      if [ "$AFTER" = hold ]; then
+        while [ ! -e "$RELEASE" ]; do sleep 0.05; done
+      else
+        sleep "$AFTER"
+      fi
+      fm_lock_release "$LOCK"
+    ' &
+    holder_pid=$!
+    while [ ! -e "$dir/ready" ] && kill -0 "$holder_pid" 2>/dev/null; do sleep 0.02; done
+    [ -e "$dir/ready" ] || fail "presentation lock holder did not acquire"
+  }
+
+  [ "$(bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_wait_seconds' "$ROOT")" = 60 ] \
+    || fail "presentation lock wait must default to 60 seconds"
+  for bad in 0 007 -3 1.5 abc; do
+    [ "$(FM_HERDR_PRESENTATION_LOCK_WAIT=$bad bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_wait_seconds' "$ROOT")" = 60 ] \
+      || fail "an invalid presentation lock wait override '$bad' must keep the default"
+  done
+
+  # Breach: a live holder outlasts a one-second budget.
+  start_presentation_lock_holder hold
+  start=$SECONDS
+  if FM_HERDR_PRESENTATION_LOCK_WAIT=1 bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_acquire_bounded "$1"' "$ROOT" "$lock"; then
+    status=0
+  else
+    status=$?
+  fi
+  elapsed=$((SECONDS - start))
+  [ "$status" -eq 1 ] || fail "a breached presentation lock wait must return 1, got $status"
+  [ "$elapsed" -ge 1 ] && [ "$elapsed" -le 4 ] \
+    || fail "a breached presentation lock wait must stop near its budget, took ${elapsed}s"
+  [ "$(cat "$lock/pid" 2>/dev/null)" = "$holder_pid" ] \
+    || fail "a breached presentation lock wait must leave the lock with its live holder"
+  : > "$dir/release"
+  wait "$holder_pid" || fail "breach holder failed"
+
+  # A live hold longer than the old five-second budget is waited out.
+  start_presentation_lock_holder 6
+  if FM_HERDR_PRESENTATION_LOCK_WAIT=20 bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_acquire_bounded "$1" && [ "$(cat "$1/pid")" = "$BASHPID" ] && fm_lock_release "$1"' "$ROOT" "$lock"; then
+    :
+  else
+    fail "a live hold shorter than the budget must be waited out and then acquired"
+  fi
+  wait "$holder_pid" || fail "slow holder failed"
+
+  # A dead holder is reclaimed immediately rather than spending the budget.
+  start_presentation_lock_holder hold
+  kill -KILL "$holder_pid" 2>/dev/null
+  wait "$holder_pid" 2>/dev/null || true
+  [ -d "$lock" ] || fail "fixture: killed holder should leave its lock behind"
+  start=$SECONDS
+  FM_HERDR_PRESENTATION_LOCK_WAIT=30 bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_acquire_bounded "$1" && fm_lock_release "$1"' "$ROOT" "$lock" \
+    || fail "a dead presentation lock holder must be reclaimed"
+  [ $((SECONDS - start)) -le 5 ] || fail "a dead presentation lock holder must not consume the wait budget"
+
+  pass "herdr presentation lock: bounded wait outlasts slow live holds, refuses cleanly on breach, reclaims dead holders"
+}
+
 test_presentation_session_lock_path_rejects_malformed_socket() {
   local dir log resp fb path status
   dir="$TMP_ROOT/presentation-malformed-socket"; mkdir -p "$dir/responses"
@@ -5349,6 +5422,7 @@ test_projection_order_anchors_the_parent_by_exact_id
 test_projection_order_foreign_new_child_before_parent_is_read_only
 test_projection_order_missing_parent_is_read_only
 test_presentation_session_lock_path_is_shared_across_homes
+test_presentation_lock_bounded_wait_breach_path
 test_presentation_session_lock_path_rejects_malformed_socket
 test_projection_order_rejects_malformed_socket
 test_projection_reclaim_refusal_matrix_is_non_mutating

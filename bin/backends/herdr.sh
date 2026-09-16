@@ -890,6 +890,44 @@ fm_backend_herdr_presentation_session_lock_path() {  # <session>
   printf '%s/order-%s.lock' "$dir" "$key"
 }
 
+# fm_backend_herdr_presentation_lock_wait_seconds: the bounded wait a spawn
+# spends queued behind a LIVE holder of the session presentation lock.
+# A spawn holds that lock from projection create or reclaim through the
+# harness launch, which includes Treehouse slot acquisition and worktree entry,
+# so one healthy hold routinely takes several seconds and more on a loaded
+# host; a waiter must outlast a few such holds.
+# A dead holder is reclaimed by fm_lock_try_acquire at once, so this budget
+# never extends a wait behind an abandoned lock.
+# FM_HERDR_PRESENTATION_LOCK_WAIT overrides it with a positive whole number of
+# seconds; any other value keeps the default.
+fm_backend_herdr_presentation_lock_wait_seconds() {
+  local wait=${FM_HERDR_PRESENTATION_LOCK_WAIT:-}
+  case "$wait" in
+    '' | *[!0-9]* | 0*) printf '60' ;;
+    *) printf '%s' "$wait" ;;
+  esac
+}
+
+# fm_backend_herdr_presentation_lock_acquire_bounded: try to take one resolved
+# session presentation lock, polling until the bounded wait above expires.
+# Returns 0 holding the lock, or 1 without it once the wait is exhausted.
+# The caller owns release and the refusal or fallback on a breach.
+fm_backend_herdr_presentation_lock_acquire_bounded() {  # <lock-path>
+  local lock_path=$1 wait deadline
+  [ -n "$lock_path" ] || return 1
+  if ! declare -F fm_lock_try_acquire >/dev/null 2>&1; then
+    # shellcheck source=bin/fm-wake-lib.sh
+    . "$FM_BACKEND_HERDR_ROOT/bin/fm-wake-lib.sh"
+  fi
+  wait=$(fm_backend_herdr_presentation_lock_wait_seconds)
+  deadline=$((SECONDS + wait))
+  while :; do
+    fm_lock_try_acquire "$lock_path" && return 0
+    [ "$SECONDS" -lt "$deadline" ] || return 1
+    sleep 0.1
+  done
+}
+
 # fm_backend_herdr_projection_focus_snapshot: print the exact active
 # workspace and tab ids as one tab-separated record.
 # Presentation mutations use this read-only snapshot as their sole focus

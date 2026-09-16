@@ -1013,6 +1013,7 @@ The compatibility floor is protocol 14.
 The pinned release the required real-Herdr lane installs and verifies is Herdr 0.9.0 protocol 22, and the retained Herdr 0.7.4 protocol 16 and Herdr 0.8.0 protocol 19 macOS aarch64 runs stay active for the below-floor and at-floor projection cases, while focused Herdr 0.7.5 protocol 17, earlier protocol-16, protocol-14, and 0.7.3 evidence is retained where it defines current behavior or fallbacks.
 Protocol 17 keeps every protocol-16 feature gate satisfied, and protocol 22 keeps all of them satisfied; the event and workspace-move floors remain 16.
 Because every gate is a minimum rather than a pin, one Firstmate serves the protocol-16 and protocol-22 generations at once, which is what lets a fleet upgrade its Herdr hosts one at a time.
+That claim carries an accepted coverage limitation recorded with the 0.9.0 evidence below, because the required lane now exercises protocol 22 only.
 Default-on presentation projection has its own floor at Herdr 0.8.0, protocol 19, verified below.
 
 Core read-only probes:
@@ -1111,6 +1112,13 @@ $ curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.7.5/herdr-li
 Both digests match the values already pinned for those tags in `tests/fm-herdr-version-floor-live-e2e.test.sh`, which is what proves the assets travelled unchanged.
 Pinning the canonical name beats relying on the redirect because a vacated namespace can be re-registered by someone else, and a pin that relies on the redirect would then fetch from a stranger.
 Every asset is pinned by exact SHA-256, so that situation would produce a failed download and a refused install rather than a compromised binary.
+
+From this change the required real-Herdr lane exercises protocol 22 only, and that is an accepted limitation recorded on 2026-09-16 rather than an oversight.
+`bin/fm-install-herdr.sh` is that lane's single pin and `tests-herdr` is the repository's only job that runs the `real-herdr-gated` family against a real binary, so protocol 16 now has no continuous automated proof at all.
+The mixed-generation claim above therefore rests on the retained manual Herdr 0.7.4 and 0.8.0 evidence plus the portable fixture coverage in `tests/fm-backend-herdr.test.sh`, not on a lane that re-runs.
+The concrete hazard is that an adapter change which only protocol 22 satisfies would pass a green required lane while a still-unupgraded protocol-16 host breaks at spawn or teardown, with no CI signal.
+The operational rule that follows is that the remaining protocol-16 host is upgraded before any further change to the Herdr adapter lands, and that ordering rather than a CI matrix is what protects the rollout window.
+A second permanent lane pinned to protocol 16 was declined because it would be maintenance carried indefinitely to cover a window that closes almost immediately, and this decision is to be revisited on this record if the fleet ever holds a protocol-16 host long term.
 
 ### fm-remote server birth and login-keychain access
 

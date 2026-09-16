@@ -3,6 +3,8 @@
 Herdr is an agent-native terminal backend with native per-pane agent state and push events.
 Firstmate requires Herdr protocol 14 or newer; broad backend verification covers versions 0.7.1, 0.7.3, 0.7.4, 0.7.5, 0.8.0, and 0.9.0, while protocol-16 features remain gated by availability.
 The protocol floor is a minimum, not a pin, so one Firstmate supports both the protocol-16 and protocol-22 generations and a fleet can upgrade its Herdr hosts one at a time.
+As of 2026-09-16 the required real-Herdr lane exercises protocol 22 only, so that support rests on retained manual evidence and portable fixture coverage rather than a lane that re-runs, and an adapter change which only protocol 22 satisfies would pass a green required lane while a still-unupgraded protocol-16 host breaks at spawn or teardown, with no CI signal.
+The remaining protocol-16 host is therefore upgraded before any further change to the Herdr adapter lands; [`verification/runtime-backends.md`](verification/runtime-backends.md#herdr-090-client-and-protocol-22) owns that accepted limitation and the reason a second pinned lane was declined.
 Default-on presentation spaces have a higher floor of Herdr 0.8.0 for the reason given under [Presentation spaces](#presentation-spaces).
 Herdr provides the terminal session while Treehouse continues to provide task worktrees.
 [`configuration.md`](configuration.md#runtime-backend-configbackend--fm_backend) owns shared backend selection and metadata semantics.

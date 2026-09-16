@@ -215,6 +215,11 @@
 #   behavior suite from the repository primary checkout while that marker is
 #   set (its header owns the refusal). A secondmate runs in its own home and is
 #   not marked.
+#   Every pane also receives `export LAVISH_AXI_PORT=<port>` on that same
+#   channel, so a worker hosting its own Lavish review loop uses the port this
+#   home resolved (bin/fm-lavish-lib.sh) instead of the machine-wide vendor
+#   default a second login may already hold. A port that cannot be resolved is
+#   skipped rather than refused; Lavish is optional for most work.
 #   Only after this isolation check, every fresh ship or scout requires a clean
 #   task worktree. When an origin configuration is detected, spawn fetches it,
 #   resolves the current remote default branch, and resets to its tip. When none
@@ -267,10 +272,10 @@
 #   TMUX TMUX_PANE HERDR_ENV HERDR_SESSION HERDR_SOCKET_PATH HERDR_PANE_ID
 #   CMUX_WORKSPACE_ID CMUX_SURFACE_ID CMUX_TAB_ID CMUX_PANEL_ID CMUX_SOCKET_PATH
 #   ZELLIJ ZELLIJ_SESSION_NAME ZELLIJ_PANE_ID FM_ZELLIJ_SESSION, plus the task
-#   marker FM_TASK_ID that ship and scout panes receive above, plus the
-#   compact-adviser kill switch COMPACT_ADVISER_DISABLE, which the floor also
-#   pins to 1 with a literal assignment so it survives the cleared environment
-#   even on a host that never had it set.
+#   marker FM_TASK_ID and this home's LAVISH_AXI_PORT that ship and scout panes
+#   receive above, plus the compact-adviser kill switch COMPACT_ADVISER_DISABLE,
+#   which the floor also pins to 1 with a literal assignment so it survives the
+#   cleared environment even on a host that never had it set.
 #   An enabled task trace also retains TRACEPARENT. Explicit Firstmate launch
 #   assignments still apply inside the filtered environment. Raw commands must
 #   be POSIX sh compatible under this opt-in; the absent-file path is unchanged.
@@ -556,6 +561,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-remote-readiness-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+# shellcheck source=bin/fm-lavish-lib.sh
+. "$SCRIPT_DIR/fm-lavish-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -4728,6 +4735,16 @@ spawn_send_text_line "$T" "export COMPACT_ADVISER_DISABLE=1"
 if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   spawn_send_text_line "$T" "export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST")"
 fi
+# Same channel, same reason, for this home's Lavish port: a scout that hosts its
+# own review loop starts a Lavish server of its own, and lavish-axi's default
+# port is one machine-wide resource, so without this a worker under a second
+# login would contend for the port its own home already owns
+# (bin/fm-lavish-lib.sh). A resolution failure is not worth refusing a spawn
+# over - Lavish is optional for most work - so the launch continues with the
+# worker on the vendor default, which is exactly where it was before.
+if SPAWN_LAVISH_PORT=$(fm_lavish_port 2>/dev/null); then
+  spawn_send_text_line "$T" "export LAVISH_AXI_PORT=$SPAWN_LAVISH_PORT" || true
+fi
 # Mark the pane as a task worker so bin/fm-test-run.sh can refuse to run the
 # suite in the repository's primary checkout. Ship and scout workers are the
 # ones assigned an isolated worktree; a secondmate runs its own home instead.
@@ -4762,7 +4779,7 @@ if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
     TMPDIR TMP TEMP GOTMPDIR TMUX TMUX_PANE HERDR_ENV HERDR_SESSION HERDR_SOCKET_PATH \
     HERDR_PANE_ID CMUX_WORKSPACE_ID CMUX_SURFACE_ID CMUX_TAB_ID CMUX_PANEL_ID \
     CMUX_SOCKET_PATH ZELLIJ ZELLIJ_SESSION_NAME ZELLIJ_PANE_ID FM_ZELLIJ_SESSION \
-    FM_TASK_ID COMPACT_ADVISER_DISABLE LAVISH_AXI_HOST \
+    FM_TASK_ID COMPACT_ADVISER_DISABLE LAVISH_AXI_HOST LAVISH_AXI_PORT \
     $LAUNCH_ENV_NAMES; do
     # Only validated names enter shell syntax. Values expand once, quoted, in
     # the pane shell and never become source text or spawn-process snapshots.

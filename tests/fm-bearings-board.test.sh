@@ -32,6 +32,7 @@ make_home() {  # <name>
 #!/usr/bin/env bash
 set -u
 state=${LAVISH_FAKE_STATE:?}
+printf '%s\n' "${LAVISH_AXI_PORT-unset}" >> "$state/ports"
 emit() {  # <canonical-file> <status>
   printf 'session:\n'
   printf '  file: %s\n' "$1"
@@ -182,6 +183,23 @@ EOF
 extract_payload() {  # <board-path>
   sed -n '/<script id="bearings-data" type="application\/json">/,/<\/script>/p' "$1" \
     | sed '1d;$d'
+}
+
+# A board that cannot raise its session is what a port collision looks like from
+# the captain's side, so the build must reach Lavish on the port this home owns
+# rather than the machine-wide vendor default a second login may already hold.
+test_build_uses_this_homes_lavish_port() {
+  local home data ports out
+  home=$(make_home lavish-port)
+  data="$home/payload.json"
+  write_valid_payload "$data"
+  mkdir -p "$home/config"
+  printf '4591\n' > "$home/config/lavish-port"
+  out=$(run_board "$home" build "$data" 2>&1) || fail "the pinned-port build failed: $out"
+  ports=$(sort -u "$home/lavish-state/ports")
+  [ "$ports" = 4591 ] \
+    || fail "the board build reached Lavish on ports other than this home's: $ports"
+  pass "the board build reaches Lavish on this home's own port"
 }
 
 test_path_is_stable_and_home_scoped() {
@@ -778,6 +796,7 @@ test_build_refuses_a_nondecision_reconcile_value() {
 }
 
 test_path_is_stable_and_home_scoped
+test_build_uses_this_homes_lavish_port
 test_build_refuses_malformed_payloads_before_touching_the_board
 test_charted_kind_is_optional_and_accepts_both_values
 test_build_injects_binds_then_arms

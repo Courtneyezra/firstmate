@@ -17,6 +17,16 @@
 # a human. The artifact is a scratch page in a temporary directory, and the
 # session it opens is ended again before the guard returns.
 #
+# The second assumption under guard is this home's Lavish port: two logins on
+# one machine contend for one vendor-default port, so the board build resolves
+# a port of its own and that only works while lavish-axi still honors it.
+#
+# Both sections run on a free port and a state directory of their own, stopping
+# each server they start. That is what keeps this guard off every server the
+# machine's real homes are using - and what keeps its verdict from depending on
+# who else happens to hold a port right now, which is the condition the guarded
+# behavior exists for in the first place.
+#
 # Standard CI has no lavish-axi, so this reports a capability skip there. The
 # portable counterpart in tests/fm-bearings-board.test.sh pins the build's logic
 # in CI against a stub that reproduces these shapes. Run this guard after a
@@ -34,11 +44,29 @@ pass() { printf 'ok - %s\n' "$1"; }
 note() { printf '# %s\n' "$1"; }
 
 LAB=''
+LAB_PORT=''
+PORT_LAB=''
+PORT_PINNED=''
 cleanup() {
   [ -z "$LAB" ] || {
+    # End the session first so the board's own armed listener returns and exits,
+    # then stop the isolated server this guard started.
     [ ! -f "$LAB/.lavish/bearings-board.html" ] \
       || lavish-axi end "$LAB/.lavish/bearings-board.html" >/dev/null 2>&1 || true
+    [ -z "${LAB_PORT:-}" ] || lavish-axi stop >/dev/null 2>&1 || true
     rm -rf "$LAB"
+  }
+  [ -z "$PORT_LAB" ] || {
+    # End the session first so the board's own armed listener returns and exits,
+    # then stop the isolated server this section started.
+    [ -z "$PORT_PINNED" ] || {
+      [ ! -f "$PORT_LAB/.lavish/bearings-board.html" ] \
+        || LAVISH_AXI_STATE_DIR="$PORT_LAB/lavish-state" LAVISH_AXI_PORT="$PORT_PINNED" \
+          lavish-axi end "$PORT_LAB/.lavish/bearings-board.html" >/dev/null 2>&1 || true
+      LAVISH_AXI_STATE_DIR="$PORT_LAB/lavish-state" LAVISH_AXI_PORT="$PORT_PINNED" \
+        lavish-axi stop >/dev/null 2>&1 || true
+    }
+    rm -rf "$PORT_LAB"
   }
 }
 fail() { printf 'not ok - %s\n' "$1" >&2; cleanup; exit 1; }
@@ -47,9 +75,22 @@ trap cleanup EXIT
 VERSION=$(lavish-axi --version 2>/dev/null | tr -d '[:space:]')
 note "lavish-axi ${VERSION:-version-unknown}"
 
+# A port nothing holds right now. The vendor keys one server per port, so this
+# is half of what keeps the guard's server to itself; its own state directory is
+# the other half.
+free_port() {
+  perl -MIO::Socket::INET -e '
+    my $s = IO::Socket::INET->new(Listen => 1, LocalAddr => "127.0.0.1", LocalPort => 0)
+      or exit 1;
+    print $s->sockport, "\n";
+  '
+}
+
 LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-bearings-lavish-live.XXXXXX") || fail "cannot create the guard lab"
 LAB=$(cd -P -- "$LAB" && pwd -P)
-mkdir -p "$LAB/state" "$LAB/data"
+mkdir -p "$LAB/state" "$LAB/data" "$LAB/lavish-state"
+LAB_PORT=$(free_port) || fail "could not find a free port for the guard server"
+export LAVISH_AXI_STATE_DIR="$LAB/lavish-state" LAVISH_AXI_PORT="$LAB_PORT"
 
 cat > "$LAB/payload.json" <<'JSON'
 {
@@ -118,3 +159,36 @@ esac
 lavish-axi 2>/dev/null | grep -F "$BOARD," | grep -q ',open,' \
   || fail "the board build reported success while the session was still not live"
 pass "the board build reopens a captain-ended session against real lavish-axi instead of arming a dead one"
+
+# --- this home's own Lavish port ----------------------------------------------
+# ASSUMPTION UNDER GUARD: a resolved port actually moves the server the board is
+# served from. Everything that keeps two logins on one machine apart rests on
+# that, and it is a vendor behavior, so a stub cannot prove it.
+#
+# Isolated on both axes the vendor keys a server by: its own free port and its
+# own state directory. Nothing this section starts can reach, rewrite, or stop
+# the server this machine's real homes are using.
+PORT_PINNED=$(free_port) || fail "could not find a free port for the Lavish port guard"
+
+PORT_LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-bearings-lavish-port.XXXXXX") || fail "cannot create the port guard lab"
+PORT_LAB=$(cd -P -- "$PORT_LAB" && pwd -P)
+mkdir -p "$PORT_LAB/state" "$PORT_LAB/data" "$PORT_LAB/config" "$PORT_LAB/lavish-state"
+printf '%s\n' "$PORT_PINNED" > "$PORT_LAB/config/lavish-port"
+cp "$LAB/payload.json" "$PORT_LAB/payload.json"
+
+# No ambient port here: the build must reach the pinned one through its own
+# home's configuration, which is the path a restarted home actually takes.
+PORT_BOARD="$PORT_LAB/.lavish/bearings-board.html"
+env -u LAVISH_AXI_PORT LAVISH_AXI_STATE_DIR="$PORT_LAB/lavish-state" \
+  FM_HOME="$PORT_LAB" FM_STATE_OVERRIDE="$PORT_LAB/state" FM_DATA_OVERRIDE="$PORT_LAB/data" \
+  FM_PROCEVENT_CLAIM_ROOT="$PORT_LAB/procevent-claims" \
+  "$ROOT/bin/fm-bearings-board.sh" build "$PORT_LAB/payload.json" >/dev/null 2>&1 \
+  || fail "the board build could not raise a session on the port this home pinned ($PORT_PINNED)"
+
+port_url=$(LAVISH_AXI_STATE_DIR="$PORT_LAB/lavish-state" LAVISH_AXI_PORT="$PORT_PINNED" \
+  lavish-axi "$PORT_BOARD" | sed -n 's/^[[:space:]]*url:[[:space:]]*//p' | head -1 | tr -d '"')
+case "$port_url" in
+  *":$PORT_PINNED/session/"*) ;;
+  *) fail "lavish-axi ${VERSION:-version-unknown} did not serve the board on the port this home resolved ($PORT_PINNED): $port_url" ;;
+esac
+pass "lavish-axi ${VERSION:-version-unknown} serves a board on the port this home resolved"

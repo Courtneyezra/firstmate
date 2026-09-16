@@ -85,12 +85,22 @@
 # every `<` in the compact JSON as the \u003c string escape, so a payload string
 # containing "</script>" can never terminate the data block early.
 #
+# THE BOARD USES THIS HOME'S LAVISH PORT, resolved by bin/fm-lavish-lib.sh and
+# exported before the first lavish-axi call, so a second login on the same
+# machine cannot take the board's server out from under it. The port is part of
+# the board's session URL, which is why that resolution is stable rather than
+# opportunistic, and every liveness refusal below names it: a board that cannot
+# be established is nearly always a port this home does not own.
+#
 # FM_BEARINGS_BOARD_TEMPLATE overrides the shipped template path (tests only).
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-$FM_ROOT}"
+
+# shellcheck source=bin/fm-lavish-lib.sh
+. "$SCRIPT_DIR/fm-lavish-lib.sh"
 
 TEMPLATE="${FM_BEARINGS_BOARD_TEMPLATE:-$SCRIPT_DIR/../.agents/skills/bearings/assets/board-template.html}"
 PLACEHOLDER='__FM_BEARINGS_BOARD_DATA__'
@@ -212,6 +222,14 @@ validate_payload() {  # <data.json>
 # signal only; the server's fresh session listing must also show the canonical
 # board open before the build may bind or arm its source.
 
+# A Lavish server this login does not own is the one failure worth naming at
+# every refusal: its symptom is an unreadable artifact or a refused bind, not
+# anything about the board itself. The hint states the check and the pin rather
+# than guessing which of the two happened.
+port_conflict_hint() {
+  printf '%s' " - check that no other login holds that port (a server started by another user cannot read this home's board), and pin a free one in ${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/lavish-port if it does"
+}
+
 board_realpath() {  # <board>
   perl -MCwd=realpath -e '$p = realpath($ARGV[0]); defined($p) or exit 1; print "$p\n"' "$1" 2>/dev/null
 }
@@ -249,13 +267,13 @@ establish_board_session() {  # <board>
   local board=$1 real out status version
   BOARD_SESSION_REOPENED=0
   real=$(board_realpath "$board") || fail "cannot resolve the board path: $board"
-  out=$(lavish-axi "$board") || fail "cannot establish the board Lavish session"
+  out=$(lavish-axi "$board") || fail "cannot establish the board Lavish session on port ${LAVISH_AXI_PORT:-unset}$(port_conflict_hint)"
   printf '%s\n' "$out"
   if lavish_board_live "$out" "$real"; then
     printf 'session: live\n'
     return 0
   fi
-  out=$(lavish-axi "$board" --reopen) || fail "cannot reopen the ended board Lavish session"
+  out=$(lavish-axi "$board" --reopen) || fail "cannot reopen the ended board Lavish session on port ${LAVISH_AXI_PORT:-unset}$(port_conflict_hint)"
   printf '%s\n' "$out"
   if lavish_board_live "$out" "$real"; then
     BOARD_SESSION_REOPENED=1
@@ -264,7 +282,7 @@ establish_board_session() {  # <board>
   fi
   status=$(lavish_status_field "$out")
   version=$(lavish-axi --version 2>/dev/null | tr -d '[:space:]')
-  fail "the board Lavish session is not live after reopening it (lavish-axi ${version:-version-unknown} reported status ${status:-none}); refusing to arm a poll on an ended session"
+  fail "the board Lavish session is not live after reopening it on port ${LAVISH_AXI_PORT:-unset} (lavish-axi ${version:-version-unknown} reported status ${status:-none})$(port_conflict_hint); refusing to arm a poll on an ended session"
 }
 
 # --- Captain's Call hygiene ---------------------------------------------------
@@ -406,6 +424,7 @@ command_build() {
   printf 'board: %s\n' "$board"
 
   command -v lavish-axi >/dev/null 2>&1 || fail "lavish-axi is not installed"
+  fm_lavish_export_port || fail "cannot resolve this home's Lavish port"
   sid=$("$SCRIPT_DIR/fm-procevent-lavish.sh" source-id "$board") \
     || fail "cannot derive the board source id"
   pre_reopen_owner=$(source_owner "$sid")
@@ -416,7 +435,7 @@ command_build() {
   fi
   if ! lavish_session_listed_open "$(board_realpath "$board")"; then
     version=$(lavish-axi --version 2>/dev/null | tr -d '[:space:]')
-    fail "the board Lavish session is not listed open immediately before arming (lavish-axi ${version:-version-unknown}); refusing to arm a poll on observed state not-open"
+    fail "the board Lavish session is not listed open immediately before arming on port ${LAVISH_AXI_PORT:-unset} (lavish-axi ${version:-version-unknown})$(port_conflict_hint); refusing to arm a poll on observed state not-open"
   fi
   printf 'served: %s\n' "$board"
 

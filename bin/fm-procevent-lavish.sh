@@ -11,7 +11,7 @@
 #   fm-procevent-lavish.sh read <result-file>
 #   fm-procevent-lavish.sh source-id <artifact.html>
 #   fm-procevent-lavish.sh retire <artifact.html>
-#   fm-procevent-lavish.sh poll <artifact.html> [--agent-reply-file <path>]
+#   fm-procevent-lavish.sh poll [--port <port>] <artifact.html> [--agent-reply-file <path>]
 #
 # classify   Print the lifecycle state a handler should act on: feedback, ended,
 #            waiting, disconnected, missing, or unknown.
@@ -120,6 +120,18 @@
 # Lavish fact, so the generic runner in bin/fm-procevent.sh stays
 # adapter-agnostic and learns nothing about it.
 #
+# THIS HOME'S LAVISH PORT TRAVELS IN THE REGISTRATION. lavish-axi's default
+# port is one machine-wide resource, so a home that resolved its own port
+# (bin/fm-lavish-lib.sh) must keep using it in every later listener too. The
+# runner executes a registration's stored argv directly and restarts it from
+# whatever environment the supervision cycle happens to carry, so `arm` resolves
+# the port once and publishes it as `--port <port>` inside that argv; `poll`
+# exports it before reaching lavish-axi. A listener the watcher relaunches
+# hours later therefore reaches the same server as the build that armed it,
+# with no dependence on an exported variable surviving. Re-arm (rebuild the
+# board) after changing this home's pin: an existing registration keeps the port
+# it was armed with, exactly as it keeps the rest of its argv.
+#
 # LOSS LIMITATION, stated plainly. The published poll destructively clears
 # feedback before returning it. A result lost after that clearing and before the
 # runner reads the process output is unrecoverable, and no Firstmate wrapper can
@@ -138,6 +150,8 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-procevent-lib.sh
 . "$SCRIPT_DIR/fm-procevent-lib.sh"
+# shellcheck source=bin/fm-lavish-lib.sh
+. "$SCRIPT_DIR/fm-lavish-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,/^set -u$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 2; }
@@ -203,7 +217,7 @@ cmd_source_id() {
 }
 
 cmd_arm() {
-  local artifact='' task='' reply_file='' id real
+  local artifact='' task='' reply_file='' id real port
   local -a listener=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -229,10 +243,14 @@ cmd_arm() {
   [ -z "$reply_file" ] || [ -n "$task" ] || usage
   command -v lavish-axi >/dev/null 2>&1 || die "lavish-axi is not installed"
   poll_retry_delay >/dev/null
+  # Resolved once, here, so the published listener carries this home's port
+  # instead of depending on the environment a later restart happens to have.
+  port=$(fm_lavish_port) || die "cannot resolve this home's Lavish port"
+  export LAVISH_AXI_PORT="$port"
   id=$(cmd_source_id "$artifact") || exit 1
   real=$(perl -MCwd=realpath -e '$p = realpath($ARGV[0]); defined($p) or exit 1; print "$p\n"' "$artifact" 2>/dev/null) \
     || die "cannot resolve the artifact path: $artifact"
-  listener=("$SCRIPT_DIR/fm-procevent-lavish.sh" poll "$real")
+  listener=("$SCRIPT_DIR/fm-procevent-lavish.sh" poll --port "$port" "$real")
   [ -z "$reply_file" ] || listener+=(--agent-reply-file "$reply_file")
   if [ -n "$task" ]; then
     FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-procevent.sh" register-task lavish "$id" "$task" -- \
@@ -246,6 +264,7 @@ cmd_arm() {
   fi
   printf 'armed: %s\n' "$id"
   printf 'artifact: %s\n' "$real"
+  printf 'port: %s\n' "$port"
   [ -z "$task" ] || printf 'owner-task: %s\n' "$task"
 }
 
@@ -346,10 +365,24 @@ poll_iteration_floor_wait() {
   ' "$1" "$2"
 }
 
+# `--port` is the registration's own copy of this home's Lavish port, published
+# by `arm`. It is authoritative for this listener: a restart inherits an
+# arbitrary environment, so the registered value must win over whatever
+# LAVISH_AXI_PORT that environment carries. With no flag - a hand-run poll, or a
+# registration armed before this argument existed - the port resolves exactly as
+# every other Firstmate Lavish path resolves it.
 cmd_poll() {
-  local artifact=${1-} delay attempt=0 response cleanup_command rc filter_rc iteration_started
+  local artifact delay attempt=0 response cleanup_command rc filter_rc iteration_started
   local pipeline_status original_host_present=0 original_host='' reply_file=''
-  local reply_text='' reply_pending=0
+  local reply_text='' reply_pending=0 port=
+  # The published listener carries --port, so it is parsed before the artifact
+  # and leaves the remaining arguments in the shape the checks below expect.
+  if [ "${1-}" = --port ]; then
+    port=${2-}
+    fm_lavish_port_valid "$port" || die "--port must be a port from $FM_LAVISH_PORT_MIN to $FM_LAVISH_PORT_MAX: $port"
+    shift 2
+  fi
+  artifact=${1-}
   [ -n "$artifact" ] || usage
   if [ "${LAVISH_AXI_HOST+x}" = x ]; then
     original_host_present=1
@@ -361,6 +394,11 @@ cmd_poll() {
     usage
   fi
   command -v lavish-axi >/dev/null 2>&1 || die "lavish-axi is not installed"
+  if [ -n "$port" ]; then
+    export LAVISH_AXI_PORT="$port"
+  else
+    fm_lavish_export_port || die "cannot resolve this home's Lavish port"
+  fi
   delay=$(poll_retry_delay) || exit 1
   response=$(mktemp "${TMPDIR:-/tmp}/fm-lavish-poll.XXXXXX") || die "cannot stage the poll response"
   printf -v cleanup_command 'rm -f -- %q' "$response"

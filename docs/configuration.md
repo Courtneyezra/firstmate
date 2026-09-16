@@ -593,6 +593,35 @@ The locked bootstrap inheritance pass uses the same placement-specific behavior;
 That live discovery starts from `state/*.meta` records with `kind=secondmate`; `data/secondmates.md` only backfills `home=` for older or incomplete meta records.
 Skipped items, such as a destination checkout that does not yet gitignore the item, are visible warnings but not hard failures.
 
+## Lavish port (config/lavish-port)
+
+Lavish's local server binds one default port for the whole MACHINE while keeping its session state per LOGIN.
+Two logins on one host therefore race for that one port: whichever starts a server first owns it, the other login's requests reach a server that cannot read its files and fail, and starting a second server on the same port is refused as already in use.
+Firstmate resolves the port per login instead, so each login's board, armed review listeners, and workers all reach that login's own server.
+
+With no configuration, the port is `4387 + (uid mod 1000)`, which is stable across restarts because a login's uid is.
+Stability matters beyond convenience: the port is part of the board's session URL.
+An ordinary single-login Linux host whose first human login is uid 1000 therefore keeps port 4387, exactly what it used before this resolution existed.
+
+Two homes under one login share that port deliberately.
+They are one user, they can read each other's artifacts, and they already share one session state directory that the server rewrites whole on every session change; two servers behind that one file would let one drop the other's sessions.
+
+Pin a specific port when the derived one is not this home's to take: another service already holds it, another login left an ordinary `lavish-axi` server on it, or two logins on this host have uids exactly 1000 apart.
+The board build names the port in every refusal, so a collision says which port to replace.
+Write the port alone in `config/lavish-port`:
+
+```text
+4391
+```
+
+The file is local and gitignored, and it is not inherited into secondmate homes.
+Pin the same port in every home that runs under one login, for the shared-state reason above.
+An ambient `LAVISH_AXI_PORT` outranks the pin for the command that carries it.
+A malformed pin or ambient value refuses rather than falling back to the vendor default, because silently returning to the shared port is the collision this resolution exists to prevent.
+
+An armed review listener carries the port it was armed with, so rebuild the board (`/bearings lavish`) after changing a pin; a listener armed before this resolution existed resolves the port like every other path.
+[`bin/fm-lavish-lib.sh`](../bin/fm-lavish-lib.sh) owns the resolution, [`bin/fm-bearings-board.sh`](../bin/fm-bearings-board.sh) and [`bin/fm-procevent-lavish.sh`](../bin/fm-procevent-lavish.sh) own the board and listener paths, and [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns how a worker pane receives it.
+
 ## Watched tool updates (config/watched-tools.json)
 
 `config/watched-tools.json` is an optional local, gitignored list of the tools this home depends on.

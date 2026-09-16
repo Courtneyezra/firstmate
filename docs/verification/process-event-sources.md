@@ -37,6 +37,45 @@ Note that `lavish-axi <anything> --help` exits 0 for any argument, including a n
 
 The adapter depends on none of this: it uses only the published poll shape above.
 
+## This home's Lavish port
+
+Verified on 2026-09-16 on Linux (7.0.0-31-generic) with `lavish-axi` 0.1.67 installed, on a host running two logins.
+
+The default port is machine-wide while the session state directory is per login, so two logins contend for one port:
+
+```text
+$ ss -ltnp | grep 4387
+LISTEN 0 511 <tailscale-ip>:4387 0.0.0.0:*
+LISTEN 0 511     127.0.0.1:4387 0.0.0.0:*
+```
+
+Neither line carries a `users:` field for the reading login, because that server belongs to the other one.
+The board build's refusal against that state is what a contending home now reports:
+
+```text
+$ bin/fm-bearings-board.sh build payload.json
+board: /tmp/fm-lavish-probe/.lavish/bearings-board.html
+fm-bearings-board: cannot establish the board Lavish session on port 4387 - check that no other login holds that port (a server started by another user cannot read this home's board), and pin a free one in /tmp/fm-lavish-probe/config/lavish-port if it does
+```
+
+The resolved port moves both the bound listener and the session URL, which is why the board's URL is stable only while the port is:
+
+```text
+$ LAVISH_AXI_STATE_DIR=<scratch> LAVISH_AXI_PORT=4602 lavish-axi probe.html
+session:
+  file: .../probe.html
+  url: "http://<host>.<tailnet>.ts.net:4602/session/e1e7b76c598cd820"
+  status: opened
+$ ss -ltnp | grep 4602
+LISTEN 0 511 <tailscale-ip>:4602 0.0.0.0:* users:(("MainThread",pid=1415365,fd=23))
+LISTEN 0 511     127.0.0.1:4602 0.0.0.0:* users:(("MainThread",pid=1415365,fd=21))
+```
+
+Binding is unchanged by the port: loopback plus this machine's Tailscale address, exactly as an unset port binds, because no `LAVISH_AXI_HOST` is involved.
+The state directory stays per login and is rewritten whole on every session change, which is why homes under one login share one server rather than taking a port each.
+
+`tests/fm-bearings-board-lavish-live-e2e.test.sh` is the guard that refreshes this evidence; it runs on a free port and its own state directory, so it never reaches a server a real home is using.
+
 ## Why an ended Lavish review is terminal
 
 Re-verified on 2026-08-01 against the same installed build.

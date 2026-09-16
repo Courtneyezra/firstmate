@@ -366,8 +366,6 @@ effective_payload() {  # <data.json> <dest.json>
     ]' "$data" > "$dest" || return 1
 }
 
-# The OWNER column bin/fm-procevent.sh already publishes: live, none,
-# orphaned, or uncertain. Empty means the source is not registered at all.
 # Whether a registration armed on <armed-port> is on a port this home no longer
 # resolves. Empty means nothing to compare: no registration, or one armed before
 # the port travelled in its argv.
@@ -375,6 +373,8 @@ port_moved() {  # <armed-port>
   [ -n "$1" ] && [ "$1" != "$LAVISH_AXI_PORT" ]
 }
 
+# The OWNER column bin/fm-procevent.sh already publishes: live, none,
+# orphaned, or uncertain. Empty means the source is not registered at all.
 source_owner() {  # <source-id>
   "$SCRIPT_DIR/fm-procevent.sh" list 2>/dev/null \
     | awk -v id="$1" 'NR > 1 && $1 == id { print $3 }'

@@ -90,6 +90,24 @@ for bad in nonsense 80 99999 '4387 4388' '43 91' '' '04387'; do
   assert_contains "$out" "lavish-port must hold one port" \
     "a malformed pin ('$bad') names the file it came from"
 done
+# A symlinked pin is not a pin this home owns, and an unreadable pin must never
+# quietly become the derived port - that is the collision this exists to stop.
+rm -f "$H/config/lavish-port"
+printf '4391\n' > "$H/pin-target"
+ln -s "$H/pin-target" "$H/config/lavish-port"
+if out=$(FM_HOME="$H" LAVISH_AXI_PORT='' fm_lavish_port 2>&1); then
+  fail "a symlinked pin resolved to $out instead of refusing"
+fi
+assert_contains "$out" "$H/config/lavish-port must be a regular file" \
+  "a symlinked pin names the file it refused"
+rm -f "$H/config/lavish-port"
+mkdir "$H/config/lavish-port"
+if out=$(FM_HOME="$H" LAVISH_AXI_PORT='' fm_lavish_port 2>&1); then
+  fail "a directory at the pin path resolved to $out instead of refusing"
+fi
+assert_contains "$out" "lavish-port must be a regular file" \
+  "a non-regular pin path is refused rather than skipped"
+rmdir "$H/config/lavish-port"
 if out=$(FM_HOME="$H" LAVISH_AXI_PORT=hello fm_lavish_port 2>&1); then
   fail "a malformed ambient port resolved to $out instead of refusing"
 fi

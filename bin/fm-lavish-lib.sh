@@ -84,7 +84,12 @@ fm_lavish_port() {
   # read whatever directory the process happens to be standing in.
   config=${FM_CONFIG_OVERRIDE-}
   [ -n "$config" ] || { [ -z "${FM_HOME-}" ] || config="$FM_HOME/config"; }
-  if [ -n "$config" ] && [ -f "$config/lavish-port" ] && [ ! -L "$config/lavish-port" ]; then
+  if [ -n "$config" ] && { [ -e "$config/lavish-port" ] || [ -L "$config/lavish-port" ]; }; then
+    if [ -L "$config/lavish-port" ] || [ ! -f "$config/lavish-port" ]; then
+      printf 'error: %s/lavish-port must be a regular file holding one port from %s to %s\n' \
+        "$config" "$FM_LAVISH_PORT_MIN" "$FM_LAVISH_PORT_MAX" >&2
+      return 1
+    fi
     IFS= read -r pin < "$config/lavish-port" 2>/dev/null || [ -n "$pin" ] || pin=''
     pin=${pin#"${pin%%[![:space:]]*}"}
     pin=${pin%"${pin##*[![:space:]]}"}

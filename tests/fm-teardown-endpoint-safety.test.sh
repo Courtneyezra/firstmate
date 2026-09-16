@@ -966,6 +966,111 @@ test_reassigned_pool_slot_finishes_own_cleanup_without_touching_the_slot() {
   pass "fm-teardown: a pool slot claimed by another task is left alone while the task's own cleanup finishes"
 }
 
+# Two landed ship records naming one clean pool slot, the second of which the
+# slot's owner claim names: the first task's teardown was refused, yet the slot
+# went back to the pool and was handed on. The claim alone decides which record
+# is stale.
+write_two_record_slot_case() {  # <name> <stale-id> <owner-id>
+  local dir
+  dir=$(make_case "$1")
+  mark_case_as_treehouse_pool "$dir"
+  rm -f "$dir/worktree/sentinel"
+  fm_write_meta "$dir/home/state/$2.meta" \
+    "window=firstmate:fm-$2" "endpoint_task_id=$2" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=ship"
+  fm_write_meta "$dir/home/state/$3.meta" \
+    "window=firstmate:fm-$3" "endpoint_task_id=$3" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=ship"
+  printf '%s\n' "$dir"
+}
+
+run_unforced_case() {  # <case> <id>
+  FM_HOME="$1/home" FM_ROOT_OVERRIDE="$ROOT" \
+  FM_RUNTIME_LOG="$1/runtime.log" PATH="$1/fakebin:$PATH" \
+    "$TEARDOWN" "$2" > "$1/stdout" 2> "$1/stderr"
+}
+
+test_two_records_one_slot_resolve_by_the_owner_claim() {
+  local dir stale=first-task owner=second-task worker rc
+
+  # The stale record is torn down first: it finishes its own cleanup and leaves
+  # the owner's slot, worker, copy, claim, and record alone.
+  dir=$(write_two_record_slot_case slot-two-records-stale-first "$stale" "$owner")
+  claim_pool_slot "$dir" "$owner"
+  ( cd "$dir/worktree" && exec sleep 30 ) &
+  worker=$!
+  run_unforced_case "$dir" "$stale" \
+    || fail "stale record's teardown refused a slot its claim names another record for: $(cat "$dir/stderr")"
+  kill -0 "$worker" 2>/dev/null || fail "stale record's teardown killed the owner's worker"
+  assert_reassigned_slot_left_alone "$dir" "$stale" "$owner" "stale record torn down first"
+  assert_present "$dir/home/state/$owner.meta" "stale record's teardown removed the owner's record"
+  kill "$worker" 2>/dev/null || true
+  wait "$worker" 2>/dev/null || true
+  : > "$dir/runtime.log"
+  run_unforced_case "$dir" "$owner" \
+    || fail "owner's teardown failed after the stale record was cleared: $(cat "$dir/stderr")"
+  assert_absent "$dir/home/state/$owner.meta" "owner's teardown left its record"
+  assert_absent "$dir/pool/1/.fm-slot-owner" "owner's teardown left its spent slot claim"
+  grep -Fq "treehouse <return>" "$dir/runtime.log" \
+    || fail "owner's teardown did not return its slot: $(cat "$dir/runtime.log")"
+
+  # The owner is torn down first while the stale record still names the slot:
+  # it proceeds normally and leaves the stale record for its own teardown.
+  dir=$(write_two_record_slot_case slot-two-records-owner-first "$stale" "$owner")
+  claim_pool_slot "$dir" "$owner"
+  run_unforced_case "$dir" "$owner" \
+    || fail "owner's teardown refused over a stale record of its claimed slot: $(cat "$dir/stderr")"
+  assert_absent "$dir/home/state/$owner.meta" "owner-first teardown left the owner's record"
+  assert_present "$dir/home/state/$stale.meta" "owner-first teardown removed the stale record"
+  assert_absent "$dir/pool/1/.fm-slot-owner" "owner-first teardown left its spent slot claim"
+  grep -Fq "treehouse <return>" "$dir/runtime.log" \
+    || fail "owner-first teardown did not return its slot: $(cat "$dir/runtime.log")"
+  assert_contains "$(cat "$dir/stderr")" "task $stale's record of that slot is stale" \
+    "owner-first teardown should name the stale record"
+  run_unforced_case "$dir" "$stale" \
+    || fail "stale record's teardown failed once the owner was gone: $(cat "$dir/stderr")"
+  assert_absent "$dir/home/state/$stale.meta" "stale record survived its own teardown"
+
+  # The owner's unlanded work still refuses its teardown without --force.
+  dir=$(write_two_record_slot_case slot-two-records-owner-dirty "$stale" "$owner")
+  claim_pool_slot "$dir" "$owner"
+  : > "$dir/worktree/unlanded"
+  set +e
+  run_unforced_case "$dir" "$owner"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "owner's teardown discarded unlanded work in its claimed slot"
+  assert_present "$dir/worktree/unlanded" "owner's refused teardown removed its unlanded work"
+  assert_present "$dir/home/state/$owner.meta" "owner's refused teardown removed its record"
+
+  # A claim naming neither record, or naming one record's id from another home,
+  # proves nothing about either record, so both teardowns still refuse.
+  for claim in "unrelated-task|$TMP_ROOT/slot-two-records-neither/home" \
+               "$owner|$TMP_ROOT/slot-two-records-foreign/elsewhere"; do
+    case "$claim" in
+      unrelated-task*) dir=$(write_two_record_slot_case slot-two-records-neither "$stale" "$owner") ;;
+      *) dir=$(write_two_record_slot_case slot-two-records-foreign "$stale" "$owner")
+         mkdir -p "$dir/elsewhere/state" ;;
+    esac
+    claim_pool_slot "$dir" "${claim%%|*}" "${claim#*|}"
+    for id in "$stale" "$owner"; do
+      set +e
+      run_unforced_case "$dir" "$id"
+      rc=$?
+      set -e
+      [ "$rc" -ne 0 ] || fail "claim ${claim%%|*} let task $id's teardown past a two-record slot"
+      assert_present "$dir/home/state/$stale.meta" "claim ${claim%%|*} removed the first record"
+      assert_present "$dir/home/state/$owner.meta" "claim ${claim%%|*} removed the second record"
+      [ ! -s "$dir/runtime.log" ] \
+        || fail "claim ${claim%%|*} reached the runtime: $(cat "$dir/runtime.log")"
+      assert_contains "$(cat "$dir/stderr")" "Reconcile whichever record is wrong" \
+        "claim ${claim%%|*} should refuse as an unresolved two-record collision"
+    done
+  done
+
+  pass "fm-teardown: two records of one pool slot resolve by its owner claim, in either order"
+}
+
 # The two states that must never become a false refusal: the task's own claim,
 # and no claim at all (a slot taken before claims existed, or already returned).
 test_own_and_absent_slot_claims_still_tear_down() {
@@ -1387,6 +1492,7 @@ test_cross_home_pool_slot_collision_refuses
 test_sole_slot_record_still_tears_down
 test_reassigned_pool_slot_finishes_own_cleanup_without_touching_the_slot
 test_own_and_absent_slot_claims_still_tear_down
+test_two_records_one_slot_resolve_by_the_owner_claim
 test_recorded_endpoint_that_changed_directory_still_tears_down
 test_project_lock_anchors_at_the_local_root_across_home_layouts
 test_remote_seeded_home_returns_its_uncontested_slot

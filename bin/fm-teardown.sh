@@ -86,7 +86,10 @@
 # cleanup step, teardown verifies record exclusivity: no OTHER task record in
 # this home or any locally registered Firstmate home may name the same live path
 # in its worktree= or home=. One live path with two task records is the reuse
-# collision itself, whichever record is stale.
+# collision itself, whichever record is stale, and it refuses unless the slot's
+# owner claim (below) names exactly one of the two records: that record is the
+# slot's owner and the other is stale, so each task's teardown then proceeds on
+# the ownership that claim proves.
 # That scan alone cannot prove THIS record is the current owner, because the task
 # that took the slot next may leave no record it can reach - its own worker may
 # have exited and its record been cleaned up, or it may live in a home this
@@ -2269,11 +2272,31 @@ collect_local_firstmate_states() {
   done
 }
 
+# Whether the slot's owner claim, already read into FM_TREEHOUSE_SLOT_OWNER_*,
+# names exactly one task record: the same task id, claimed from the home whose
+# state directory holds that record. An id match from any other home, or a
+# claim home that no longer resolves, proves nothing about this record.
+slot_claim_names_record() {  # <task-id> <state-dir>
+  local id=$1 state_dir=$2 claim_home record_home
+  [ "$FM_TREEHOUSE_SLOT_OWNER" = mine ] || [ "$FM_TREEHOUSE_SLOT_OWNER" = other ] || return 1
+  [ "$FM_TREEHOUSE_SLOT_OWNER_ID" = "$id" ] || return 1
+  record_home=$(canonical_existing_dir "$(dirname "$state_dir")") || return 1
+  claim_home=$(canonical_existing_dir "$FM_TREEHOUSE_SLOT_OWNER_HOME") || return 1
+  [ "$claim_home" = "$record_home" ]
+}
+
+# Two records naming one slot are resolved only by the slot's owner claim: when
+# it names exactly one of the two records, the other record is the stale one.
+# A stale record of this task proceeds, and require_owned_worktree_slot_record
+# then skips every slot step; a stale OTHER record is not this teardown's to
+# change, so this task's teardown proceeds normally. Any other claim state - no
+# claim, a claim naming neither record, or one that cannot be read - refuses.
 require_exclusive_worktree_slot_record() {
   local record_meta=$1 record_id=$2 record_state=$3 worktree=$4
-  local slot state_dir other other_id field other_path other_slot
+  local slot state_dir other other_id field other_path other_slot stale_id
   slot=$(canonical_existing_dir "$worktree") || return 0
   collect_local_firstmate_states "$record_state" || return 1
+  fm_treehouse_slot_owner_state "$slot" "$record_id"
   for state_dir in "${TREEHOUSE_OWNER_STATES[@]}"; do
     for other in "$state_dir"/*.meta; do
       [ -f "$other" ] && [ ! -L "$other" ] || continue
@@ -2284,6 +2307,16 @@ require_exclusive_worktree_slot_record() {
         [ -n "$other_path" ] || continue
         other_slot=$(canonical_existing_dir "$other_path") || continue
         [ "$other_slot" = "$slot" ] || continue
+        stale_id=
+        if slot_claim_names_record "$other_id" "$state_dir"; then
+          stale_id=$record_id
+        elif slot_claim_names_record "$record_id" "$record_state"; then
+          stale_id=$other_id
+        fi
+        if [ -n "$stale_id" ]; then
+          echo "warning: task $record_id's recorded worktree $slot is also task $other_id's recorded $field; the slot's owner claim names task $FM_TREEHOUSE_SLOT_OWNER_ID, so task $stale_id's record of that slot is stale." >&2
+          continue
+        fi
         echo "REFUSED: task $record_id's recorded worktree $slot is also task $other_id's recorded $field." >&2
         echo "Returning that pool slot would kill $other_id's processes and reset its copy, so nothing was changed - not even with --force." >&2
         echo "Reconcile whichever record is wrong (bin/fm-crew-state.sh $record_id; bin/fm-crew-state.sh $other_id), then re-run teardown." >&2

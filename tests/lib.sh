@@ -63,6 +63,14 @@ unset FM_TASK_ID
 # against an ambient override sets TASKS_AXI_FILE itself.
 unset TASKS_AXI_FILE TASKS_AXI_BACKEND
 
+# Clear this home's Lavish port. bin/fm-spawn.sh exports LAVISH_AXI_PORT into
+# every ship and scout pane - which is where this suite runs - and
+# bin/fm-lavish-lib.sh gives that ambient value precedence over a fixture's own
+# config/lavish-port, so a case that pins a port would otherwise assert against
+# the pane's port instead. A case that verifies ambient precedence sets
+# LAVISH_AXI_PORT itself.
+unset LAVISH_AXI_PORT
+
 # Resolve the repo root from this library's own location. Consumed by sourcing
 # test files, not by this library, so it reads as "unused" here.
 # shellcheck disable=SC2034

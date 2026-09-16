@@ -12,6 +12,7 @@
 #   fm-procevent-lavish.sh source-id <artifact.html>
 #   fm-procevent-lavish.sh retire <artifact.html>
 #   fm-procevent-lavish.sh poll [--port <port>] <artifact.html> [--agent-reply-file <path>]
+#   fm-procevent-lavish.sh armed-port <artifact.html>
 #
 # classify   Print the lifecycle state a handler should act on: feedback, ended,
 #            waiting, disconnected, missing, or unknown.
@@ -40,6 +41,10 @@
 #            argument; later retries poll without that reply. That post is best
 #            effort: a crash while consuming drops that one round's reply
 #            instead of posting it twice. See the note at the consume site.
+# armed-port Print the Lavish port the registration for this artifact carries,
+#            or nothing when there is no registration or it was armed before the
+#            port travelled in the argv. This adapter owns what `--port` means;
+#            the runner's own `registered-argv` owns where it is stored.
 # terminal   Exit 0 when the captured result means this Lavish source will never
 #            produce another result, so the runner may retire it; any other exit
 #            keeps it armed. This is the generic adapter contract bin/fm-procevent.sh
@@ -128,9 +133,11 @@
 # the port once and publishes it as `--port <port>` inside that argv; `poll`
 # exports it before reaching lavish-axi. A listener the watcher relaunches
 # hours later therefore reaches the same server as the build that armed it,
-# with no dependence on an exported variable surviving. Re-arm (rebuild the
-# board) after changing this home's pin: an existing registration keeps the port
-# it was armed with, exactly as it keeps the rest of its argv.
+# with no dependence on an exported variable surviving. A registration keeps the
+# port it was armed with exactly as it keeps the rest of its argv, so changing
+# this home's pin needs no separate re-arm step: the next board rebuild reads
+# that port back through `armed-port` and re-arms when this home now resolves a
+# different one (bin/fm-bearings-board.sh owns that comparison).
 #
 # LOSS LIMITATION, stated plainly. The published poll destructively clears
 # feedback before returning it. A result lost after that clearing and before the
@@ -266,6 +273,26 @@ cmd_arm() {
   printf 'artifact: %s\n' "$real"
   printf 'port: %s\n' "$port"
   [ -z "$task" ] || printf 'owner-task: %s\n' "$task"
+}
+
+# Read back the port an existing registration published, through the runner's
+# own guarded read rather than its registry file. Silence is the honest answer
+# for a source that is not registered and for one armed before `--port` existed:
+# neither pins a listener to a port this home has moved off.
+cmd_armed_port() {
+  local artifact=${1-} id line next=0
+  [ -n "$artifact" ] || usage
+  [ "$#" -eq 1 ] || usage
+  id=$(cmd_source_id "$artifact") || exit 1
+  while IFS= read -r line; do
+    if [ "$next" = 1 ]; then
+      fm_lavish_port_valid "$line" \
+        || die "the registration for $id carries an unusable port: $line"
+      printf '%s\n' "$line"
+      return 0
+    fi
+    [ "$line" != --port ] || next=1
+  done < <("$SCRIPT_DIR/fm-procevent.sh" registered-argv "$id" 2>/dev/null)
 }
 
 cmd_retire() {
@@ -838,6 +865,7 @@ cmd_read() {
 case "${1-}" in
   arm)       shift; cmd_arm "$@" ;;
   retire)    shift; cmd_retire "$@" ;;
+  armed-port) shift; cmd_armed_port "$@" ;;
   poll)      shift; cmd_poll "$@" ;;
   source-id) shift; cmd_source_id "$@" ;;
   classify)  shift; cmd_classify "$@" ;;

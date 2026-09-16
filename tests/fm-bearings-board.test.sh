@@ -476,12 +476,17 @@ SH
   pass "build establishes the Lavish session before binding and arming"
 }
 
-run_lavish_source_id() {  # <home> <artifact>
+run_lavish() {  # <home> <command args...>
   local home=$1
+  shift
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
-    "$ROOT/bin/fm-procevent-lavish.sh" source-id "$2"
+    "$ROOT/bin/fm-procevent-lavish.sh" "$@"
+}
+
+run_lavish_source_id() {  # <home> <artifact>
+  run_lavish "$1" source-id "$2"
 }
 
 test_rebuild_is_idempotent_and_does_not_double_arm() {
@@ -500,6 +505,37 @@ test_rebuild_is_idempotent_and_does_not_double_arm() {
   records=$(find "$home/state/procevent" -name '*.source' | wc -l | tr -d ' ')
   [ "$records" = 1 ] || fail "rebuilding left $records source registrations instead of 1"
   pass "rebuild refreshes the board in place without double-arming"
+}
+
+# A pin changed after the board was armed must not leave the listener polling the
+# port this home has moved off: the rebuild is the whole recovery, so it re-arms
+# the registration itself rather than reporting `already-armed` over stale argv.
+test_rebuild_moves_an_armed_listener_onto_a_changed_pin() {
+  local home data board out sid
+  home=$(make_home port-change)
+  data="$home/payload.json"
+  board="$home/.lavish/bearings-board.html"
+  write_valid_payload "$data"
+  mkdir -p "$home/config"
+  printf '4591\n' > "$home/config/lavish-port"
+  run_board "$home" build "$data" >/dev/null || fail "the first build failed"
+  sid=$(run_lavish_source_id "$home" "$board")
+  assert_equals 4591 "$(run_lavish "$home" armed-port "$board")" \
+    "the first build armed the listener on this home's pinned port"
+
+  printf '4593\n' > "$home/config/lavish-port"
+  : > "$home/lavish-state/ports"
+  out=$(run_board "$home" build "$data") || fail "the rebuild after the pin change failed: $out"
+  assert_contains "$out" "port-moved: $sid 4591 -> 4593" \
+    "the rebuild did not report moving the armed listener: $out"
+  case "$out" in *already-armed:*) fail "the rebuild kept the stale registration: $out" ;; esac
+  assert_equals 4593 "$(run_lavish "$home" armed-port "$board")" \
+    "the re-armed listener still carries the port the pin moved off"
+  [ "$(sort -u "$home/lavish-state/ports")" = 4593 ] \
+    || fail "the rebuild reached Lavish on a port other than the new pin"
+  [ "$(run_procevent "$home" list | awk -v id="$sid" 'NR > 1 && $1 == id { print $3 }')" = live ] \
+    || fail "the re-armed board has nothing listening"
+  pass "a rebuild re-arms the board listener onto a changed pin"
 }
 
 test_build_refuses_a_template_without_exactly_one_slot() {
@@ -803,6 +839,7 @@ test_build_injects_binds_then_arms
 test_registration_cannot_consume_before_any_origin_binding
 test_build_does_not_bind_or_arm_when_session_start_fails
 test_rebuild_is_idempotent_and_does_not_double_arm
+test_rebuild_moves_an_armed_listener_onto_a_changed_pin
 test_build_refuses_a_template_without_exactly_one_slot
 test_build_reopens_a_session_the_captain_ended
 test_build_reopens_when_an_opened_session_ends_before_listing

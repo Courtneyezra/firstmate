@@ -69,7 +69,7 @@ fm_lavish_port_derived() {
 # steering lavish-axi itself), then this home's config/lavish-port pin, then
 # the derived per-login port.
 fm_lavish_port() {
-  local config pin
+  local config pin=''
   if [ -n "${LAVISH_AXI_PORT-}" ]; then
     fm_lavish_port_valid "$LAVISH_AXI_PORT" || {
       printf 'error: LAVISH_AXI_PORT must be a port from %s to %s: %s\n' \
@@ -85,7 +85,7 @@ fm_lavish_port() {
   config=${FM_CONFIG_OVERRIDE-}
   [ -n "$config" ] || { [ -z "${FM_HOME-}" ] || config="$FM_HOME/config"; }
   if [ -n "$config" ] && [ -f "$config/lavish-port" ] && [ ! -L "$config/lavish-port" ]; then
-    IFS= read -r pin < "$config/lavish-port" 2>/dev/null || pin=''
+    IFS= read -r pin < "$config/lavish-port" 2>/dev/null || [ -n "$pin" ] || pin=''
     pin=${pin//[[:space:]]/}
     fm_lavish_port_valid "$pin" || {
       printf 'error: %s/lavish-port must hold one port from %s to %s: %s\n' \

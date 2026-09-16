@@ -17,6 +17,7 @@
 #   fm-procevent.sh extension-retirement <binding|transfer> <retirement-arguments...>
 #   fm-procevent.sh extension-bind <bind|receive-transfer-bind> <binding-arguments...>
 #   fm-procevent.sh extension-process-event <process-event-arguments...>
+#   fm-procevent.sh registered-argv <source-id>
 #   fm-procevent.sh list
 #
 # register   Record a built-in source: its adapter, its canonical id, and the
@@ -112,6 +113,11 @@
 # extension-bind
 #            Serialize tracked binding publication against extension resolution,
 #            registration publication, and retirement in this home.
+# registered-argv
+#            Print a built-in registration's stored argv, one argument per line,
+#            so the adapter that armed a source can read back what it published
+#            without opening this runner's state itself. Read-only, and refuses
+#            when no readable built-in registration exists.
 # list       Show registered sources, owners, and pending captured results.
 #
 # Terminal knowledge is adapter-owned. This runner never inspects a result and
@@ -2189,6 +2195,18 @@ cmd_sweep_home() {
   printf 'swept: attempted=%s\n' "$attempted"
 }
 
+# The published read of a registration's argv. An adapter owns the meaning of
+# its own arguments but not where they are stored, so it asks here rather than
+# parsing the registry file - which is exactly the coupling `register` exists to
+# keep on one side of this seam.
+cmd_registered_argv() {
+  local id=${1-}
+  [ "$#" -eq 1 ] || usage
+  fm_procevent_source_id_valid "$id" || die "source id must be path-safe and at most 64 characters: $id"
+  read_argv "$id" || die "no readable built-in registration: $id"
+  printf '%s\n' "${ARGV[@]}"
+}
+
 cmd_list() {
   local rec id adapter owner pending claim_state kind task
   owner_lease_refresh
@@ -2350,6 +2368,7 @@ case "${1-}" in
   extension-retirement) shift; cmd_extension_retirement "$@" ;;
   extension-bind) shift; cmd_extension_bind "$@" ;;
   extension-process-event) shift; cmd_extension_process_event "$@" ;;
+  registered-argv)    shift; cmd_registered_argv "$@" ;;
   list)               shift; cmd_list "$@" ;;
   ''|-h|--help|help) usage ;;
   *) die "unknown command: $1" ;;

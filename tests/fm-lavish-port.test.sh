@@ -73,6 +73,13 @@ assert_equals 4599 "$(FM_HOME="$H" LAVISH_AXI_PORT='' fm_lavish_port)" \
 assert_equals 4601 "$(FM_HOME="$H" LAVISH_AXI_PORT=4601 fm_lavish_port)" \
   "an explicit ambient port outranks the pin"
 
+# An operator writes this file by hand, and a hand-written file often has no
+# trailing newline. Reading it must keep the value rather than refuse the board
+# with the very "cannot be raised" symptom the pin exists to clear.
+printf '%s' 4597 > "$H/config/lavish-port"
+assert_equals 4597 "$(FM_HOME="$H" LAVISH_AXI_PORT='' fm_lavish_port)" \
+  "a pin written without a trailing newline is honored"
+
 for bad in nonsense 80 99999 '4387 4388' '' '04387'; do
   printf '%s\n' "$bad" > "$H/config/lavish-port"
   if out=$(FM_HOME="$H" LAVISH_AXI_PORT='' fm_lavish_port 2>&1); then
@@ -107,11 +114,11 @@ armed=$(PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" \
 assert_contains "$armed" "port: 4599" "arm reports the port it published"
 
 sid=$(PATH="$H/fakebin:$PATH" FM_HOME="$H" "$POLL" source-id "$ART")
-registered=$(cat "$H/state/procevent/$sid.source" 2>/dev/null) \
+registered=$(PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" \
+  FM_PROCEVENT_CLAIM_ROOT="$H/procevent-claims" "$POLL" armed-port "$ART") \
   || fail "the registration for $sid is unreadable"
-assert_contains "$registered" "--port" \
-  "the registration carries the port rather than leaving it to the environment"
-assert_contains "$registered" "4599" "the registration carries this home's port"
+assert_equals 4599 "$registered" \
+  "the registration carries this home's port rather than leaving it to the environment"
 pass "arm publishes this home's port inside the registered listener command"
 
 # The relaunch case: run the published listener command exactly as the runner

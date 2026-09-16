@@ -29,6 +29,10 @@
 #              bound: <source-id>
 #              armed: <source-id>            (first registration)
 #              already-armed: <source-id>    (registration already present)
+#              port-moved: <source-id> <from> -> <to>
+#                                            (a registration armed on a port
+#                                            this home no longer resolves, so
+#                                            the rebuild re-armed it here)
 #              listening: <owner>            (only when a replacement was needed)
 #            Every dropped card is named on stderr as a `dropped-landed-card:`
 #            line, so a rebuild states what it removed instead of quietly
@@ -91,6 +95,13 @@
 # the board's session URL, which is why that resolution is stable rather than
 # opportunistic, and every liveness refusal below names it: a board that cannot
 # be established is nearly always a port this home does not own.
+#
+# A REBUILD MOVES A LISTENER THAT IS ON THE WRONG PORT. An armed listener keeps
+# the port it was armed with, so a home that changes its pin would otherwise
+# keep polling a server it no longer uses. build reads the armed port back
+# through the guarded adapter path and re-arms onto this home's port when the
+# two differ, which is what makes the rebuild the whole recovery rather than
+# the second half of one an operator has to remember.
 #
 # FM_BEARINGS_BOARD_TEMPLATE overrides the shipped template path (tests only).
 set -eu
@@ -377,6 +388,7 @@ await_source_owner() {  # <source-id>
 
 command_build() {
   local data=${1-} board json tmp sid extracted effective owner version pre_reopen_owner
+  local armed_port
   [ "$#" -eq 1 ] || { usage >&2; exit 2; }
   command -v jq >/dev/null 2>&1 || fail "jq is required"
   [ -f "$data" ] || fail "board data does not exist: $data"
@@ -444,9 +456,19 @@ command_build() {
   printf 'bound: %s\n' "$sid"
 
   owner=$(source_owner "$sid")
+  armed_port=$("$SCRIPT_DIR/fm-procevent-lavish.sh" armed-port "$board") \
+    || fail "cannot read the port the board's source was armed on"
   if [ "$BOARD_SESSION_REOPENED" = 1 ]; then
     "$SCRIPT_DIR/fm-procevent-lavish.sh" arm "$board" >/dev/null \
       || fail "cannot arm a fresh board source after reopening"
+    printf 'armed: %s\n' "$sid"
+    owner=$(source_owner "$sid")
+  elif [ -n "$owner" ] && [ -n "$armed_port" ] && [ "$armed_port" != "$LAVISH_AXI_PORT" ]; then
+    "$SCRIPT_DIR/fm-procevent-lavish.sh" retire "$board" >/dev/null \
+      || fail "cannot retire the source armed on port $armed_port"
+    "$SCRIPT_DIR/fm-procevent-lavish.sh" arm "$board" >/dev/null \
+      || fail "cannot arm the board source on port $LAVISH_AXI_PORT"
+    printf 'port-moved: %s %s -> %s\n' "$sid" "$armed_port" "$LAVISH_AXI_PORT"
     printf 'armed: %s\n' "$sid"
     owner=$(source_owner "$sid")
   elif [ -n "$owner" ]; then

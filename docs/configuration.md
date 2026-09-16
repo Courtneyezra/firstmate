@@ -619,7 +619,8 @@ Pin the same port in every home that runs under one login, for the shared-state 
 An ambient `LAVISH_AXI_PORT` outranks the pin for the command that carries it.
 A malformed pin or ambient value refuses rather than falling back to the vendor default, because silently returning to the shared port is the collision this resolution exists to prevent.
 
-An armed review listener carries the port it was armed with, so rebuild the board (`/bearings lavish`) after changing a pin; a listener armed before this resolution existed resolves the port like every other path.
+An armed review listener carries the port it was armed with, so the next board rebuild (`/bearings lavish`) re-arms the board's own listener onto the new port by itself and reports it as `port-moved:`; changing a pin needs no separate re-arm step.
+A listener armed before this resolution existed carries no port and resolves it like every other path.
 [`bin/fm-lavish-lib.sh`](../bin/fm-lavish-lib.sh) owns the resolution, [`bin/fm-bearings-board.sh`](../bin/fm-bearings-board.sh) and [`bin/fm-procevent-lavish.sh`](../bin/fm-procevent-lavish.sh) own the board and listener paths, and [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns how a worker pane receives it.
 
 ## Watched tool updates (config/watched-tools.json)

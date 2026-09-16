@@ -1087,6 +1087,31 @@ server 0.7.4 protocol 16 compatible false restart_needed true server_binary_stal
 Upgrading a host's Herdr binary therefore requires restarting that host's server, which ends its running panes; the client and server must move together.
 The API socket is still not relocatable by `HERDR_CONFIG_PATH`, `XDG_CONFIG_HOME`, or `HOME` on 0.9.0, so a named non-`default` session remains the only local isolation.
 
+The pin also moved the repository name from `ogulcancelik/herdr` to `herdrdev/herdr`, and that rename was measured on 2026-09-16 rather than taken from the release notes.
+GitHub resolves the old path to the new one rather than serving two independent repositories:
+
+```text
+$ gh api repos/herdrdev/herdr --jq '.full_name, .archived'
+herdrdev/herdr
+false
+$ gh api repos/ogulcancelik/herdr --jq '.full_name, .archived'
+herdrdev/herdr
+false
+```
+
+The older tags the live floor guard pins also resolve from the new path and serve byte-identical assets, so that default-on guard does not start hard-failing:
+
+```text
+$ curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.8.0/herdr-linux-x86_64 | sha256sum
+b872ea7e40fa2cb17e857ac9b62b1bf26db7b403c622f5d2f3f5b35f6e9acd28
+$ curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.7.5/herdr-linux-x86_64 | sha256sum
+3dc83288073e4c2d3c679a30e7be97bcca9141c6fd17dbbb9219142e95c59253
+```
+
+Both digests match the values already pinned for those tags in `tests/fm-herdr-version-floor-live-e2e.test.sh`, which is what proves the assets travelled unchanged.
+Pinning the canonical name beats relying on the redirect because a vacated namespace can be re-registered by someone else, and a pin that relies on the redirect would then fetch from a stranger.
+Every asset is pinned by exact SHA-256, so that situation would produce a failed download and a refused install rather than a compromised binary.
+
 ### fm-remote server birth and login-keychain access
 
 Measured 2026-09-09 on macOS 26 (Darwin 25.6.0) aarch64 with Claude Code 2.1.266 and Herdr 0.9.0, the guarantee behind `bin/fm-remote-herdr-guard.sh` and the doctor's `herdr-server` check: login-keychain access follows the audit session a process was born into, never the launch shape or the shell.

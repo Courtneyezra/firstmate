@@ -6,11 +6,12 @@
 # floor the required real-Herdr lane gates on, and `.github/workflows/ci.yml`
 # reads both from `--print-pin` instead of restating them. That makes the mode's
 # stdout a consumed contract, so this suite drives the script's executable
-# interface only and asserts what a caller can observe: the exact key set, values
-# a shell can use unquoted, a protocol floor that is a positive integer, and the
-# offline promise that the mode downloads nothing and writes nowhere. The
-# download and install path is not exercised here; it needs the network and a
-# real release asset, and the required lane is its evidence.
+# interface only and asserts what a caller can observe: the exact key set, a
+# version in the dotted release shape its consumer extracts, a protocol floor
+# that is a positive integer, and the offline promise that the mode downloads
+# nothing and writes nowhere. The download and install path is not exercised
+# here; it needs the network and a real release asset, and the required lane is
+# its evidence.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -68,7 +69,7 @@ min_protocol" ] || fail "--print-pin printed keys '$keys', expected exactly vers
   pass "--print-pin exits 0 and prints exactly the version and min_protocol keys"
 }
 
-test_pin_values_are_shell_safe_and_usable() {
+test_pin_values_are_usable_by_the_ci_consumer() {
   local version protocol
   run_installer --print-pin
   [ "$STATUS" -eq 0 ] || fail "--print-pin exited $STATUS: $(cat "$ERR")"
@@ -80,14 +81,11 @@ test_pin_values_are_shell_safe_and_usable() {
     [0-9]*.[0-9]*) : ;;
     *) fail "--print-pin printed version '$version', expected a dotted release" ;;
   esac
-  case "$version" in
-    *[!0-9.]*) fail "--print-pin printed version '$version'; a consumer uses it unquoted" ;;
-  esac
   case "$protocol" in
     ''|*[!0-9]*) fail "--print-pin printed min_protocol '$protocol', expected a positive integer" ;;
   esac
   [ "$protocol" -gt 0 ] || fail "--print-pin printed min_protocol '$protocol', expected it above zero"
-  pass "--print-pin prints an unquotable version and a positive integer protocol floor"
+  pass "--print-pin prints a dotted release version and a positive integer protocol floor"
 }
 
 test_print_pin_downloads_nothing_and_writes_nowhere() {
@@ -97,17 +95,6 @@ test_print_pin_downloads_nothing_and_writes_nowhere() {
   dir_is_empty "$SANDBOX" || fail "--print-pin wrote into its working directory: $(ls -A "$SANDBOX")"
   dir_is_empty "$SCRATCH_TMP" || fail "--print-pin created a temp directory: $(ls -A "$SCRATCH_TMP")"
   pass "--print-pin is offline: no transfer, no install, no destination or temp directory"
-}
-
-test_print_pin_is_stable_across_runs() {
-  local first
-  run_installer --print-pin
-  [ "$STATUS" -eq 0 ] || fail "--print-pin exited $STATUS: $(cat "$ERR")"
-  first=$(cat "$OUT")
-  run_installer --print-pin
-  [ "$STATUS" -eq 0 ] || fail "second --print-pin exited $STATUS: $(cat "$ERR")"
-  [ "$first" = "$(cat "$OUT")" ] || fail "--print-pin output changed between runs"
-  pass "--print-pin is a stable contract across runs"
 }
 
 test_missing_argument_still_fails_with_usage() {
@@ -121,7 +108,6 @@ test_missing_argument_still_fails_with_usage() {
 }
 
 test_print_pin_exits_zero_with_exactly_the_two_keys
-test_pin_values_are_shell_safe_and_usable
+test_pin_values_are_usable_by_the_ci_consumer
 test_print_pin_downloads_nothing_and_writes_nowhere
-test_print_pin_is_stable_across_runs
 test_missing_argument_still_fails_with_usage

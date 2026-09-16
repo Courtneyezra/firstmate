@@ -49,7 +49,7 @@ STATUS=""
 run_installer() {
   (
     cd "$SANDBOX" || exit 127
-    PATH="$STUB_BIN:$PATH" TMPDIR="$SCRATCH_TMP" RUNNER_TEMP= "$INSTALLER" "$@"
+    PATH="$STUB_BIN:$PATH" TMPDIR="$SCRATCH_TMP" RUNNER_TEMP='' "$INSTALLER" "$@"
   ) >"$OUT" 2>"$ERR"
   STATUS=$?
 }

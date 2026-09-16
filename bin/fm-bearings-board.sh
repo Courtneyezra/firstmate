@@ -388,7 +388,7 @@ await_source_owner() {  # <source-id>
 
 command_build() {
   local data=${1-} board json tmp sid extracted effective owner version pre_reopen_owner
-  local armed_port
+  local armed_port port_moved=0
   [ "$#" -eq 1 ] || { usage >&2; exit 2; }
   command -v jq >/dev/null 2>&1 || fail "jq is required"
   [ -f "$data" ] || fail "board data does not exist: $data"
@@ -440,10 +440,16 @@ command_build() {
   sid=$("$SCRIPT_DIR/fm-procevent-lavish.sh" source-id "$board") \
     || fail "cannot derive the board source id"
   pre_reopen_owner=$(source_owner "$sid")
+  armed_port=$("$SCRIPT_DIR/fm-procevent-lavish.sh" armed-port "$board") \
+    || fail "cannot read the port the board's source was armed on"
   establish_board_session "$board"
   if [ "$BOARD_SESSION_REOPENED" = 1 ]; then
     "$SCRIPT_DIR/fm-procevent-lavish.sh" retire "$board" >/dev/null \
       || fail "cannot retire the pre-reopen source generation (observed owner: ${pre_reopen_owner:-none})"
+  elif [ -n "$armed_port" ] && [ "$armed_port" != "$LAVISH_AXI_PORT" ]; then
+    "$SCRIPT_DIR/fm-procevent-lavish.sh" retire "$board" >/dev/null \
+      || fail "cannot retire the source armed on port $armed_port"
+    port_moved=1
   fi
   if ! lavish_session_listed_open "$(board_realpath "$board")"; then
     version=$(lavish-axi --version 2>/dev/null | tr -d '[:space:]')
@@ -456,19 +462,9 @@ command_build() {
   printf 'bound: %s\n' "$sid"
 
   owner=$(source_owner "$sid")
-  armed_port=$("$SCRIPT_DIR/fm-procevent-lavish.sh" armed-port "$board") \
-    || fail "cannot read the port the board's source was armed on"
   if [ "$BOARD_SESSION_REOPENED" = 1 ]; then
     "$SCRIPT_DIR/fm-procevent-lavish.sh" arm "$board" >/dev/null \
       || fail "cannot arm a fresh board source after reopening"
-    printf 'armed: %s\n' "$sid"
-    owner=$(source_owner "$sid")
-  elif [ -n "$owner" ] && [ -n "$armed_port" ] && [ "$armed_port" != "$LAVISH_AXI_PORT" ]; then
-    "$SCRIPT_DIR/fm-procevent-lavish.sh" retire "$board" >/dev/null \
-      || fail "cannot retire the source armed on port $armed_port"
-    "$SCRIPT_DIR/fm-procevent-lavish.sh" arm "$board" >/dev/null \
-      || fail "cannot arm the board source on port $LAVISH_AXI_PORT"
-    printf 'port-moved: %s %s -> %s\n' "$sid" "$armed_port" "$LAVISH_AXI_PORT"
     printf 'armed: %s\n' "$sid"
     owner=$(source_owner "$sid")
   elif [ -n "$owner" ]; then
@@ -476,6 +472,8 @@ command_build() {
   else
     "$SCRIPT_DIR/fm-procevent-lavish.sh" arm "$board" >/dev/null \
       || fail "cannot arm the board as a process-event source"
+    [ "$port_moved" = 0 ] \
+      || printf 'port-moved: %s %s -> %s\n' "$sid" "$armed_port" "$LAVISH_AXI_PORT"
     printf 'armed: %s\n' "$sid"
     owner=$(source_owner "$sid")
   fi

@@ -535,6 +535,8 @@ test_rebuild_moves_an_armed_listener_onto_a_changed_pin() {
     || fail "the rebuild reached Lavish on a port other than the new pin"
   [ "$(run_procevent "$home" list | awk -v id="$sid" 'NR > 1 && $1 == id { print $3 }')" = live ] \
     || fail "the re-armed board has nothing listening"
+  [ "$(run_decisions "$home" binding "$sid")" = "(any)" ] \
+    || fail "the moved board has no keyed-answer binding, so a tap has nowhere to go"
   pass "a rebuild re-arms the board listener onto a changed pin"
 }
 

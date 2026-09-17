@@ -773,28 +773,125 @@ fm_backend_herdr_projection_workspace_label() {  # <task-id> <projection-id>
   printf '└ %s · p:%s' "$(fm_backend_herdr_projection_concise_task_label "$1")" "$2"
 }
 
-# fm_backend_herdr_presentation_session_lock_path: one machine-private lock
-# path per live named Herdr session/socket, shared across every Firstmate home
-# that uses that session.
+# fm_backend_herdr_presentation_session_lock_path: one user-private lock path
+# per live named Herdr session/socket, shared across every Firstmate home that
+# uses that session.
 # The path is never under any one home's state/ and secondmates never write the
 # primary home. Returns non-zero when the named session's socket cannot be
 # resolved unambiguously.
 #
-# The namespace carries the calling user's numeric uid because
-# fm_backend_herdr_presentation_lock_namespace_valid demands uid ownership and
-# mode 700. An unqualified shared name cannot satisfy that for two users of one
-# host: whoever creates the directory first owns it, and every other user's
-# validation then fails forever, so their pane closes refuse for good. A Herdr
-# session belongs to exactly one user anyway (its socket lives under that user's
-# own config directory), so scoping the namespace per uid loses no sharing - the
-# same user's homes, primary and secondmate alike, still meet on one path.
+# The namespace lives under a base only this login can write, never under a
+# world-writable sticky /tmp. A predictable /tmp name is pre-creatable by any
+# other local user: /tmp's sticky bit then stops the intended owner removing
+# that squatted directory, fm_backend_herdr_presentation_lock_namespace_valid
+# fails on it forever, and every pane close and cleanup for that login refuses
+# from then on. Under a base whose every component this login owns and no one
+# else can write, no other local user can create the namespace at all.
+#
+# The namespace still carries the calling user's numeric uid, so two logins
+# that somehow share one base (a shared HOME, say) keep the separate namespaces
+# that ownership validation demands rather than locking each other out. A Herdr
+# session belongs to exactly one user anyway (its socket lives under that
+# user's own config directory), so scoping per uid loses no sharing - the same
+# user's homes, primary and secondmate alike, still meet on one path.
 fm_backend_herdr_presentation_lock_namespace() {
-  local uid
+  local uid base
   uid=$(id -u 2>/dev/null) || return 1
   case "$uid" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  printf '/tmp/firstmate-herdr-presentation-%s' "$uid"
+  base=$(fm_backend_herdr_presentation_lock_base) || return 1
+  printf '%s/herdr-presentation-%s' "$base" "$uid"
+}
+
+# fm_backend_herdr_presentation_lock_base: the user-private root the namespace
+# lives under, created at mode 700 when it is this adapter's own directory.
+# XDG_RUNTIME_DIR comes first when this login actually has a usable one: it is
+# the platform's own per-login runtime directory and is cleared at logout, so a
+# lock there cannot outlive the processes that took it. Otherwise the base is
+# the login's own state root, XDG_STATE_HOME or ~/.local/state, matching the
+# root bin/fm-procevent-lib.sh already keeps its claims under.
+#
+# Each candidate root is canonicalized before it is judged, so a symlinked HOME
+# or state root is followed rather than refused, and is then required to be a
+# real directory this login owns that grants no write bit to group or other.
+# An unusable, foreign-owned or unreadable base returns non-zero, and the
+# caller refuses the presentation mutation rather than proceeding unlocked.
+#
+# One consequence is worth knowing: the base is chosen from this process's own
+# environment, so a Firstmate process started without XDG_RUNTIME_DIR on a host
+# where its siblings have one resolves the state root instead, and the two do
+# not mutually exclude. Keep one login's Firstmate processes in one environment.
+fm_backend_herdr_presentation_lock_base() {
+  local runtime=${XDG_RUNTIME_DIR:-} state=${XDG_STATE_HOME:-} base
+  if [ -n "$runtime" ] && base=$(fm_backend_herdr_presentation_lock_root_private "$runtime"); then
+    :
+  else
+    if [ -z "$state" ]; then
+      [ -n "${HOME:-}" ] || return 1
+      state="$HOME/.local/state"
+    fi
+    case "$state" in
+      /*) ;;
+      *) return 1 ;;
+    esac
+    if [ ! -d "$state" ]; then
+      (umask 077; mkdir -p "$state") 2>/dev/null || return 1
+    fi
+    base=$(fm_backend_herdr_presentation_lock_root_private "$state") || return 1
+  fi
+  base="$base/firstmate"
+  if [ ! -d "$base" ]; then
+    (umask 077; mkdir "$base") 2>/dev/null || true
+  fi
+  fm_backend_herdr_presentation_lock_private_dir "$base" || return 1
+  printf '%s' "$base"
+}
+
+# fm_backend_herdr_presentation_lock_root_private: print the canonical path of
+# one candidate root, or return non-zero when it is not a private directory of
+# this login. Canonicalizing first is what lets a symlinked root be followed
+# instead of refused.
+fm_backend_herdr_presentation_lock_root_private() {  # <dir>
+  local dir=$1 resolved
+  [ -n "$dir" ] || return 1
+  case "$dir" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  resolved=$(cd "$dir" 2>/dev/null && pwd -P) || return 1
+  fm_backend_herdr_presentation_lock_private_dir "$resolved" || return 1
+  printf '%s' "$resolved"
+}
+
+# fm_backend_herdr_presentation_lock_private_dir: true when a path is a real
+# directory this login owns that no other local user can write.
+fm_backend_herdr_presentation_lock_private_dir() {  # <dir>
+  local dir=$1 expected_uid owner mode
+  [ -d "$dir" ] && [ ! -L "$dir" ] || return 1
+  expected_uid=$(id -u 2>/dev/null) || return 1
+  owner=$(fm_backend_herdr_presentation_lock_namespace_uid "$dir") || return 1
+  [ "$owner" = "$expected_uid" ] || return 1
+  mode=$(fm_backend_herdr_presentation_lock_namespace_mode "$dir") || return 1
+  fm_backend_herdr_presentation_lock_mode_private "$mode"
+}
+
+# fm_backend_herdr_presentation_lock_mode_private: true when an octal mode
+# string grants no write bit to group or to other. The leading setuid digit is
+# ignored: only the last two digits carry those write bits.
+fm_backend_herdr_presentation_lock_mode_private() {  # <mode>
+  local mode=$1
+  case "$mode" in
+    '' | *[!0-7]*) return 1 ;;
+  esac
+  [ "${#mode}" -ge 2 ] || return 1
+  case "${mode: -1}" in
+    2 | 3 | 6 | 7) return 1 ;;
+  esac
+  case "${mode: -2:1}" in
+    2 | 3 | 6 | 7) return 1 ;;
+  esac
+  return 0
 }
 
 fm_backend_herdr_presentation_lock_namespace_mode() {
@@ -866,8 +963,48 @@ fm_backend_herdr_presentation_session_socket_path() {  # <session>
   fm_backend_herdr_canonical_socket_path "$socket"
 }
 
+# fm_backend_herdr_presentation_lock_legacy_namespace: the pre-move /tmp
+# namespace this login used before the lock base became user-private.
+# FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT replaces /tmp for tests, which
+# must never touch the running fleet's real legacy locks.
+fm_backend_herdr_presentation_lock_legacy_namespace() {
+  local uid root=${FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT:-/tmp}
+  uid=$(id -u 2>/dev/null) || return 1
+  case "$uid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  case "$root" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  printf '%s/firstmate-herdr-presentation-%s' "$root" "$uid"
+}
+
+# fm_backend_herdr_presentation_lock_legacy_live: true when the pre-move lock
+# for this exact key is still held by a living process.
+# The legacy namespace must still pass the same ownership and mode validation:
+# a squatted or foreign /tmp directory is never honored, only ignored, which is
+# the whole point of leaving /tmp behind.
+# This is a read-only probe. It creates nothing under /tmp and never removes or
+# steals another process's lock.
+fm_backend_herdr_presentation_lock_legacy_live() {  # <lock-path>
+  local lock=$1 pid
+  [ -n "$lock" ] || return 1
+  [ -d "$lock" ] && [ ! -L "$lock" ] || return 1
+  fm_backend_herdr_presentation_lock_namespace_valid "$(dirname "$lock")" || return 1
+  pid=$(cat "$lock/pid" 2>/dev/null) || return 1
+  case "$pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  if ! declare -F fm_pid_alive >/dev/null 2>&1; then
+    # shellcheck source=bin/fm-wake-lib.sh
+    . "$FM_BACKEND_HERDR_ROOT/bin/fm-wake-lib.sh"
+  fi
+  fm_pid_alive "$pid"
+}
+
 fm_backend_herdr_presentation_session_lock_path() {  # <session>
-  local session=$1 socket key dir hash
+  local session=$1 socket key dir hash legacy
   [ -n "$session" ] || return 1
   socket=$(fm_backend_herdr_presentation_session_socket_path "$session") || return 1
   if command -v shasum >/dev/null 2>&1; then
@@ -879,6 +1016,17 @@ fm_backend_herdr_presentation_session_lock_path() {  # <session>
   fi
   [ -n "$hash" ] || return 1
   key=${hash:0:32}
+  # Migration: a process that started before this change still holds its lock
+  # at the old /tmp path, and a new process taking the new path instead would
+  # not exclude it, so one presentation mutation could run beside another. For
+  # as long as that old lock has a living holder, keep meeting it there; the
+  # moment it has none, every process moves to the user-private base and the
+  # old path is simply left behind. Nothing is migrated, deleted, or stolen.
+  if legacy=$(fm_backend_herdr_presentation_lock_legacy_namespace) \
+    && fm_backend_herdr_presentation_lock_legacy_live "$legacy/order-$key.lock"; then
+    printf '%s/order-%s.lock' "$legacy" "$key"
+    return 0
+  fi
   dir=$(fm_backend_herdr_presentation_lock_namespace) || return 1
   [ -n "$dir" ] || return 1
   if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then

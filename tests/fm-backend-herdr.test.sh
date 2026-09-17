@@ -3252,10 +3252,21 @@ SH
   pass "herdr presentation ordering: missing owning parent is warning-only and read-only"
 }
 
+# herdr_lock_fixture: create the private lock base and the pre-move namespace
+# root a presentation-lock case runs against. Both are pinned into the case's
+# own fixture through the environment each call below sets, so a test never
+# reads, creates, or races the running fleet's real lock directories.
+herdr_lock_fixture() {  # <fixture-dir>
+  local dir=$1
+  mkdir -p "$dir/run" "$dir/fakehome" "$dir/legacy" || return 1
+  chmod 700 "$dir/run"
+}
+
 test_presentation_session_lock_path_is_shared_across_homes() {
-  local dir log resp fb path_a path_b path_other path_tmp path_private path_other_uid
+  local dir log resp fb path_a path_b path_other path_tmp path_private
   dir="$TMP_ROOT/presentation-session-lock"; mkdir -p "$dir/responses" "$dir/sockdir"
   log="$dir/log"; resp="$dir/responses"; : > "$log"
+  herdr_lock_fixture "$dir" || fail "lock fixture failed"
   : > "$dir/sockdir/fmtest.sock"
   printf '%s\n' "{\"sessions\":[{\"name\":\"fmtest\",\"running\":true,\"socket_path\":\"$dir/sockdir/fmtest.sock\"}]}" > "$resp/1.out"
   printf '%s\n' "{\"sessions\":[{\"name\":\"fmtest\",\"running\":true,\"socket_path\":\"$dir/sockdir/fmtest.sock\"}]}" > "$resp/2.out"
@@ -3263,26 +3274,33 @@ test_presentation_session_lock_path_is_shared_across_homes() {
   : > "$dir/sockdir/other.sock"
   fb=$(make_herdr_fakebin "$dir")
   path_a=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT="$dir/legacy" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_session_lock_path fmtest' "$ROOT") \
     || fail "session lock path resolution failed for home A"
   path_b=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT="$dir/legacy" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_session_lock_path fmtest' "$ROOT") \
     || fail "session lock path resolution failed for home B"
   [ "$path_a" = "$path_b" ] || fail "same session/socket must resolve one shared lock path"
+  # One namespace per login under this login's own private base, never under a
+  # world-writable /tmp any other local user could pre-create into, and still
+  # uid-qualified so two logins that share a base keep separate namespaces.
   case "$path_a" in
-    "/tmp/firstmate-herdr-presentation-$(id -u)/order-"*.lock) ;;
-    *) fail "session lock path must use the shared per-user machine namespace: $path_a" ;;
-  esac
-  # The namespace must be uid-qualified. An unqualified name cannot satisfy the
-  # uid-ownership validation for a second user of the same host, which leaves
-  # that user's pane closes refusing forever.
-  case "$path_a" in
-    /tmp/firstmate-herdr-presentation/*) fail "session lock namespace must be uid-qualified: $path_a" ;;
+    "$dir/run/firstmate/herdr-presentation-$(id -u)/order-"*.lock) ;;
+    *) fail "session lock path must use the login's private per-user namespace: $path_a" ;;
   esac
   case "$path_a" in
-    */state/*) fail "session lock path must not live under a home state directory: $path_a" ;;
+    "$dir/legacy"/*) fail "session lock path must not use the pre-move /tmp namespace: $path_a" ;;
+  esac
+  # Homes share the lock, so it must never sit inside any one home's state/.
+  case "$path_a" in
+    "$FM_HOME"/state/*) fail "session lock path must not live under a home state directory: $path_a" ;;
   esac
   path_other=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT="$dir/legacy" \
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_session_lock_path other' "$ROOT") \
     || fail "session lock path resolution failed for a different session"
   [ "$path_other" != "$path_a" ] || fail "different sessions must not share one lock path"
@@ -3292,9 +3310,13 @@ test_presentation_session_lock_path_is_shared_across_homes() {
     printf '%s\n' '{"sessions":[{"name":"canon","running":true,"socket_path":"/tmp/fm-herdr-lock-canon-'"$$"'.sock"}]}' > "$resp/4.out"
     printf '%s\n' "{\"sessions\":[{\"name\":\"canon\",\"running\":true,\"socket_path\":\"$(cd /tmp && pwd -P)/fm-herdr-lock-canon-$$.sock\"}]}" > "$resp/5.out"
     path_tmp=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT="$dir/legacy" \
       bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_session_lock_path canon' "$ROOT") \
       || fail "lock path with /tmp socket failed"
     path_private=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT="$dir/legacy" \
       bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_session_lock_path canon' "$ROOT") \
       || fail "lock path with canonical socket failed"
     rm -f /tmp/fm-herdr-lock-canon-$$.sock
@@ -3303,7 +3325,9 @@ test_presentation_session_lock_path_is_shared_across_homes() {
   fi
   # Two users of one host must never contend for the same namespace directory:
   # its validation requires uid ownership, so a shared name would lock the
-  # second user out permanently. Drive the uid apart and assert the paths do.
+  # second user out permanently. Drive the uid apart against a base this login
+  # owns: the other uid must be refused outright rather than handed this
+  # login's namespace, and nothing may be created for it.
   mkdir -p "$dir/uidbin"
   # The namespace only ever asks for `id -u`; anything else is a fixture bug and
   # should fail loudly rather than silently fall through to the real id.
@@ -3312,15 +3336,173 @@ test_presentation_session_lock_path_is_shared_across_homes() {
   chmod 0755 "$dir/uidbin/id"
   printf '%s\n' "{\"sessions\":[{\"name\":\"fmtest\",\"running\":true,\"socket_path\":\"$dir/sockdir/fmtest.sock\"}]}" > "$resp/6.out"
   path_other_uid=$(PATH="$dir/uidbin:$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT") \
-    || fail "namespace resolution failed for a second uid"
-  [ "$path_other_uid" = "/tmp/firstmate-herdr-presentation-4242" ] \
-    || fail "a second uid must get its own namespace, got: $path_other_uid"
-  case "$path_a" in
-    "$path_other_uid"/*) fail "two uids must not share one lock namespace: $path_a" ;;
-  esac
+    XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT="$dir/legacy" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT" 2>/dev/null) \
+    && fail "a foreign uid must not resolve a namespace under this login's base, got: $path_other_uid"
+  [ ! -e "$dir/run/firstmate/herdr-presentation-4242" ] \
+    || fail "a foreign uid must not have a namespace created for it"
 
   pass "herdr presentation lock: one path per session/socket across homes"
+}
+
+# The lock base moved off world-writable /tmp because a predictable /tmp name
+# is pre-creatable by any other local user: /tmp's sticky bit then stops the
+# victim removing the squatted directory and every pane close refuses for good.
+# These cases pin the replacement resolution and its refusals.
+test_presentation_lock_base_is_user_private() {
+  local dir uid base_run base_state
+  dir="$TMP_ROOT/presentation-lock-base"; mkdir -p "$dir/run" "$dir/fakehome" "$dir/statehome"
+  uid=$(id -u)
+  chmod 700 "$dir/run"
+
+  # A usable per-login runtime directory is preferred.
+  base_run=$(XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT") \
+    || fail "namespace resolution failed with a usable runtime directory"
+  [ "$base_run" = "$dir/run/firstmate/herdr-presentation-$uid" ] \
+    || fail "runtime directory must own the namespace, got: $base_run"
+
+  # Every directory this adapter introduces is created mode 700.
+  [ "$(herdr_lock_dir_mode "$dir/run/firstmate")" = 700 ] \
+    || fail "the adapter's own base directory must be mode 700"
+
+  # A runtime directory another local user can write is not usable, and the
+  # login's own state root takes over rather than the resolution proceeding.
+  chmod 777 "$dir/run"
+  base_state=$(XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT") \
+    || fail "namespace resolution failed when falling back to the state root"
+  [ "$base_state" = "$dir/fakehome/.local/state/firstmate/herdr-presentation-$uid" ] \
+    || fail "an unusable runtime directory must fall back to the state root, got: $base_state"
+  [ "$(herdr_lock_dir_mode "$dir/fakehome/.local/state/firstmate")" = 700 ] \
+    || fail "the state-root base directory must be mode 700"
+  chmod 700 "$dir/run"
+
+  # An explicit state root is honored over the HOME default.
+  base_state=$(XDG_RUNTIME_DIR='' HOME="$dir/fakehome" XDG_STATE_HOME="$dir/statehome" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT") \
+    || fail "namespace resolution failed with an explicit state root"
+  [ "$base_state" = "$dir/statehome/firstmate/herdr-presentation-$uid" ] \
+    || fail "an explicit state root must own the namespace, got: $base_state"
+
+  pass "herdr presentation lock: the base is a user-private directory, not /tmp"
+}
+
+# herdr_lock_dir_mode: the octal mode of one directory, portably.
+herdr_lock_dir_mode() {  # <dir>
+  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+    /usr/bin/stat -f '%Lp' "$1" 2>/dev/null
+  else
+    stat -c '%a' "$1" 2>/dev/null
+  fi
+}
+
+test_presentation_lock_base_refuses_rather_than_proceeds_unlocked() {
+  local dir out
+  dir="$TMP_ROOT/presentation-lock-base-refusal"; mkdir -p "$dir/statehome" "$dir/fakehome"
+
+  # No runtime directory and no home at all: there is no private base to use,
+  # so resolution refuses instead of returning a path nobody can trust.
+  out=$(XDG_RUNTIME_DIR='' XDG_STATE_HOME='' HOME='' \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT" 2>/dev/null) \
+    && fail "a login with no resolvable private base must refuse, got: $out"
+
+  # A relative state root is never accepted.
+  out=$(XDG_RUNTIME_DIR='' HOME="$dir/fakehome" XDG_STATE_HOME=relative/state \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT" 2>/dev/null) \
+    && fail "a relative state root must refuse, got: $out"
+
+  # A state root any other local user can write is refused, not silently used.
+  chmod 777 "$dir/statehome"
+  out=$(XDG_RUNTIME_DIR='' HOME="$dir/fakehome" XDG_STATE_HOME="$dir/statehome" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT" 2>/dev/null) \
+    && fail "a world-writable state root must refuse, got: $out"
+  chmod 700 "$dir/statehome"
+
+  # A base directory owned by someone else is refused too. The foreign uid is
+  # driven through `id -u` against a base this login owns.
+  mkdir -p "$dir/uidbin"
+  # shellcheck disable=SC2016 # The single quotes are deliberate: this is the fake id's own script body.
+  printf '#!/bin/sh\n[ "$1" = -u ] || { echo "fake id: unexpected args: $*" >&2; exit 64; }\necho 4242\n' > "$dir/uidbin/id"
+  chmod 0755 "$dir/uidbin/id"
+  out=$(PATH="$dir/uidbin:$PATH" XDG_RUNTIME_DIR='' HOME="$dir/fakehome" XDG_STATE_HOME="$dir/statehome" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_lock_namespace' "$ROOT" 2>/dev/null) \
+    && fail "a foreign-owned base must refuse, got: $out"
+
+  pass "herdr presentation lock: an unusable base refuses instead of proceeding unlocked"
+}
+
+# Migration: a process that started before the base moved still holds its lock
+# at the old /tmp path. A new process must meet it there for the remainder of
+# that hold instead of taking a different path and running unserialized beside
+# it, and must never delete or steal it.
+test_presentation_lock_honors_a_live_legacy_tmp_hold() {
+  local dir log resp fb uid legacy key path_new path_legacy holder_pid dead_pid i
+  dir="$TMP_ROOT/presentation-lock-legacy"; mkdir -p "$dir/responses" "$dir/sockdir"
+  log="$dir/log"; resp="$dir/responses"; : > "$log"
+  herdr_lock_fixture "$dir" || fail "lock fixture failed"
+  uid=$(id -u); legacy="$dir/legacy/firstmate-herdr-presentation-$uid"
+  : > "$dir/sockdir/fmtest.sock"
+  for i in 1 2 3 4 5 6; do
+    printf '%s\n' "{\"sessions\":[{\"name\":\"fmtest\",\"running\":true,\"socket_path\":\"$dir/sockdir/fmtest.sock\"}]}" > "$resp/$i.out"
+  done
+  fb=$(make_herdr_fakebin "$dir")
+
+  herdr_legacy_lock_path() {
+    PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    XDG_RUNTIME_DIR="$dir/run" HOME="$dir/fakehome" XDG_STATE_HOME='' \
+    FM_BACKEND_HERDR_PRESENTATION_LOCK_LEGACY_ROOT="$dir/legacy" \
+      bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_session_lock_path fmtest' "$ROOT"
+  }
+
+  path_new=$(herdr_legacy_lock_path) || fail "lock path resolution failed with no legacy lock"
+  case "$path_new" in
+    "$dir/run/firstmate/herdr-presentation-$uid/order-"*.lock) ;;
+    *) fail "with no legacy lock the new base must be used: $path_new" ;;
+  esac
+  [ ! -e "$legacy" ] || fail "resolution must never create the pre-move /tmp namespace"
+  key=${path_new##*/}
+
+  # A live pre-move holder: the same path must come back, so the two processes
+  # still exclude each other.
+  mkdir -p "$legacy/$key" || fail "legacy lock fixture failed"
+  chmod 700 "$legacy" || fail "legacy namespace fixture failed"
+  sleep 30 & holder_pid=$!
+  printf '%s\n' "$holder_pid" > "$legacy/$key/pid"
+  path_legacy=$(herdr_legacy_lock_path) || fail "lock path resolution failed with a live legacy lock"
+  [ "$path_legacy" = "$legacy/$key" ] \
+    || fail "a live pre-move hold must be honored where it is held, got: $path_legacy"
+
+  # The hold is honored, never taken away from its holder.
+  [ -f "$legacy/$key/pid" ] || fail "a live legacy hold must not be removed"
+  [ "$(cat "$legacy/$key/pid")" = "$holder_pid" ] || fail "a live legacy hold must not be stolen"
+
+  # Once the holder is gone the lock moves to the private base and the dead
+  # husk is simply left behind.
+  kill "$holder_pid" 2>/dev/null
+  wait "$holder_pid" 2>/dev/null
+  dead_pid=$holder_pid
+  printf '%s\n' "$dead_pid" > "$legacy/$key/pid"
+  path_legacy=$(herdr_legacy_lock_path) || fail "lock path resolution failed after the legacy holder died"
+  [ "$path_legacy" = "$path_new" ] \
+    || fail "a dead legacy hold must not keep the lock on /tmp, got: $path_legacy"
+  [ -d "$legacy/$key" ] || fail "resolution must not delete the abandoned legacy lock"
+
+  # A squatted legacy namespace - the exact attack the move fixes - is ignored
+  # rather than honored, whatever it contains.
+  sleep 30 & holder_pid=$!
+  printf '%s\n' "$holder_pid" > "$legacy/$key/pid"
+  chmod 777 "$legacy"
+  path_legacy=$(herdr_legacy_lock_path) || fail "lock path resolution failed with a squatted legacy namespace"
+  [ "$path_legacy" = "$path_new" ] \
+    || fail "a legacy namespace that fails ownership validation must be ignored, got: $path_legacy"
+  kill "$holder_pid" 2>/dev/null
+  wait "$holder_pid" 2>/dev/null
+  chmod 700 "$legacy"
+
+  unset -f herdr_legacy_lock_path
+  pass "herdr presentation lock: a live pre-move /tmp hold is honored, then left behind"
 }
 
 # A live holder whose hold outlasts the old five-second budget must still be
@@ -5422,6 +5604,9 @@ test_projection_order_anchors_the_parent_by_exact_id
 test_projection_order_foreign_new_child_before_parent_is_read_only
 test_projection_order_missing_parent_is_read_only
 test_presentation_session_lock_path_is_shared_across_homes
+test_presentation_lock_base_is_user_private
+test_presentation_lock_base_refuses_rather_than_proceeds_unlocked
+test_presentation_lock_honors_a_live_legacy_tmp_hold
 test_presentation_lock_bounded_wait_breach_path
 test_presentation_session_lock_path_rejects_malformed_socket
 test_projection_order_rejects_malformed_socket

@@ -119,7 +119,7 @@ An ambiguous response grants no mutation or cleanup authority.
 
 Protocol 16 exposes `workspace.move` over the named session socket but no CLI subcommand.
 `bin/backends/herdr-workspace-move.py` sends only that whitelisted method and verifies the complete returned workspace order.
-Projected children are placed in one contiguous block immediately after their owning home when the session layout, protocol, socket, `python3`, and machine-private per-session lock are all verifiable.
+Projected children are placed in one contiguous block immediately after their owning home when the session layout, protocol, socket, `python3`, and user-private per-session lock are all verifiable.
 Existing legacy child labels may extend an already adjacent block read-only but are never renamed or migrated.
 A foreign, ambiguous, detached, or manually interleaved child makes ordering skip with a warning rather than rewriting the layout.
 
@@ -144,8 +144,11 @@ Forced secondmate cleanup recursively preflights every Herdr child endpoint and 
 Durable task records are erased only once the exact pane is confirmed gone through its structured presence: after every close path, only a structured not-found response counts as gone, while a present or unknown result retains every record with a visible, retryable error.
 Missing or malformed endpoint identity and missing confirmation machinery are ambiguity, never proof of a gone pane, and refuse record removal the same way.
 If lock, snapshot, pane identity, or restoration is ambiguous, cleanup warns and preserves the journal for manual inspection.
-That session lock's namespace is scoped to the calling user's uid, so a host must have its Firstmate processes stopped before its Herdr or Firstmate binaries change rather than being upgraded underneath live panes.
-Across such an upgrade a still-running pre-change process holds the old unscoped `/tmp/firstmate-herdr-presentation` path while a post-change process holds the uid-scoped one - the two no longer mutually exclude, so a concurrent presentation workspace reorder can run unserialized.
+That session lock lives under a base only the calling login can write: `$XDG_RUNTIME_DIR/firstmate/herdr-presentation-<uid>` when this login has a usable runtime directory, and otherwise `${XDG_STATE_HOME:-~/.local/state}/firstmate/herdr-presentation-<uid>`.
+It is never placed in a world-writable `/tmp`, where any other local user could pre-create the predictable directory that the lock's ownership check then rejects for good, and the uid in the name keeps two logins that share one base on separate namespaces.
+A base that is missing, foreign-owned, writable by another local user, or otherwise unreadable refuses the presentation mutation rather than letting it run without a lock.
+A lock left over from before that move is honored where it lies for as long as a living process still holds it, so an upgrade cannot leave two presentation mutations running unserialized; the old `/tmp` path is never created, deleted, or taken over, and every lock moves to the private base as soon as no live holder remains there.
+Because the base is read from each process's own environment, one login's Firstmate processes should share one environment: a process started without `XDG_RUNTIME_DIR` beside siblings that have one resolves the state root instead, and those two locks do not exclude each other.
 
 Recovery is deliberately conservative and presentation-only.
 An existing journal suppresses another projected create.

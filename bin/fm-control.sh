@@ -158,6 +158,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-busy-lib.sh"
 # shellcheck source=bin/fm-control-lib.sh
 . "$SCRIPT_DIR/fm-control-lib.sh"
+# shellcheck source=bin/fm-agent-process-lib.sh
+. "$SCRIPT_DIR/fm-agent-process-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
@@ -471,7 +473,10 @@ retire_busy_incarnation() {
 }
 
 # do_exit: stop the running agent, preserving endpoint and worktree. Prints
-# `already-stopped`, `endpoint-gone`, or `stopped`.
+# `already-stopped`, `endpoint-gone`, or `stopped`. `endpoint-gone` covers both
+# an endpoint already proven gone before anything is sent and one that went with
+# its agent after the exit command was delivered; in each case the stop holds
+# and the endpoint this verb normally preserves did not survive.
 do_exit() {
   local state cmd verdict composer_state cancel absence interrupt_result=not-needed
   require_state_verified_backend exit
@@ -558,6 +563,20 @@ do_exit() {
   [ "$verdict" != send-failed ] \
     || die "the exit command could not be sent to task $ID on $BACKEND"
   state=$(wait_agent_state "$EXIT_WAIT" dead) || {
+    # An agent can take its endpoint with it: where the harness was `exec`ed,
+    # its exit ends the pane shell too, so the endpoint this stop would be
+    # confirmed from is GONE rather than idle. That is a completed stop, not an
+    # unconfirmed one - but only once absence is PROVEN, through the same one
+    # owner the pre-delivery path uses. An endpoint that is merely unreachable
+    # from this seat still refuses, because its agent may be running yet.
+    if [ "$state" = missing ]; then
+      absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T")
+      if [ "${absence%%$'\t'*}" = gone ]; then
+        retire_busy_incarnation
+        printf 'endpoint-gone'
+        return 0
+      fi
+    fi
     die "exit-delivered $ID interrupt=$interrupt_result exit-command=delivered agent-state=$state exit=unconfirmed; the agent did not stop within ${EXIT_WAIT}s"
   }
   # The incarnation is over: retire its busy wiring so no stale record or
@@ -865,7 +884,7 @@ record_note() {
 }
 
 do_relaunch() {
-  local exit_result state note_line
+  local exit_result state note_line relaunch_absence
   local -a spawn_args
 
   require_state_verified_backend relaunch
@@ -893,6 +912,21 @@ do_relaunch() {
     note_line="note_file=$NOTE_FILE"
   else
     note_line="note=none"
+  fi
+  # A relaunch onto a PROVEN-gone endpoint has nothing left to read the agent
+  # from, and an agent outlives the terminal it was started in: its pane can be
+  # destroyed while it keeps running on this worktree. The endpoint proof cannot
+  # see that, so the worktree itself must be proven free before this transaction
+  # touches the record or the instructions. The launch owner repeats the proof
+  # at the point of launch; this one exists so the refusal costs nothing and
+  # names the occupant. An endpoint that survives is unaffected - its own
+  # classifier already answered for the agent.
+  if [ "$(agent_state)" = missing ]; then
+    relaunch_absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T")
+    if [ "${relaunch_absence%%$'\t'*}" = gone ] \
+      && ! fm_agent_process_dir_unoccupied "$WT"; then
+      die "task $ID's recorded endpoint is gone, but its worktree $WT is not proven agent-free: $FM_AGENT_PROCESS_DIR_REASON; refusing to launch a second agent into it"
+    fi
   fi
   safe_checkpoint
   cp -p "$META" "$META_PRIOR" || die "could not preserve task $ID's durable record before relaunching"

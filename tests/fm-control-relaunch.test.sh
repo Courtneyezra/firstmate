@@ -1664,6 +1664,27 @@ test_spawn_relaunch_refuses_a_pending_authoritative_close() {
   pass "fm-spawn --relaunch: pending closes refuse before replacement begins"
 }
 
+test_missing_tmux_endpoint_still_refuses_relaunch() {
+  local dir out rc
+  dir=$(new_case gone rl37)
+  add_ship_task "$dir" rl37 claude
+  : > "$dir/fake/windows"
+  cp "$dir/home/state/rl37.meta" "$dir/meta.before"
+  cp "$dir/home/data/rl37/brief.md" "$dir/brief.before"
+  out=$(run_control "$dir" rl37 relaunch --note "window vanished"); rc=$?
+  expect_code 1 "$rc" "a relaunch over a vanished tmux window should refuse"
+  assert_contains "$out" "absence cannot be proven" "the refusal should say why tmux cannot claim the endpoint is gone"
+  assert_not_contains "$out" "'relaunch' can replace" "tmux must not be offered a replacement endpoint"
+  cmp -s "$dir/meta.before" "$dir/home/state/rl37.meta" || fail "the refused relaunch changed the record"
+  cmp -s "$dir/brief.before" "$dir/home/data/rl37/brief.md" || fail "the refused relaunch changed the instructions"
+  out=$(run_spawn "$dir" rl37 --relaunch); rc=$?
+  expect_code 1 "$rc" "the launch owner should refuse a vanished tmux window on its own"
+  assert_contains "$out" "reads 'missing'" "the launch owner refusal should name the missing endpoint"
+  cmp -s "$dir/meta.before" "$dir/home/state/rl37.meta" || fail "the refused launch-owner relaunch changed the record"
+  [ ! -s "$dir/fake/literal" ] || fail "a refused relaunch must not type anything"
+  pass "relaunch: a vanished tmux endpoint keeps refusing; only herdr ship and scout tasks get a replacement endpoint"
+}
+
 test_spawn_relaunch_refuses_contradicting_flags() {
   local dir out rc
   dir=$(new_case flags rl16)
@@ -2251,6 +2272,7 @@ test_spawn_relaunch_refuses_a_live_agent
 test_spawn_relaunch_refuses_a_symlinked_task_record_before_inspection
 test_spawn_relaunch_keeps_its_early_meta_lock_continuous
 test_spawn_relaunch_refuses_a_pending_authoritative_close
+test_missing_tmux_endpoint_still_refuses_relaunch
 test_spawn_relaunch_refuses_contradicting_flags
 test_spawn_relaunch_refuses_an_unrecorded_task
 test_spawn_relaunch_refuses_a_pane_outside_the_worktree

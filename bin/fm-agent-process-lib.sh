@@ -109,3 +109,69 @@ fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|othe
     printf 'other'
   fi
 }
+
+# fm_agent_process_pids_with_cwd_under: pids of every process whose CURRENT
+# WORKING DIRECTORY is exactly <dir> or under it, from one bounded system-wide
+# `lsof -a -d cwd` scan (never the recursive +D file-tree walk, which lsof
+# itself documents as slow). Never $$ (the calling script's own pid). Empty
+# output when nothing matches or <dir> does not exist; failure means the scan
+# could not establish a safe result, and callers must treat it as unknown.
+fm_agent_process_pids_with_cwd_under() {  # <dir>
+  local dir=$1 out pid path line
+  [ -n "$dir" ] && [ -d "$dir" ] || return 0
+  dir=$(cd "$dir" && pwd -P) || return 1
+  out=$(lsof -a -d cwd -Fpn 2>/dev/null) || return 1
+  [ -n "$out" ] || return 0
+  pid=
+  while IFS= read -r line; do
+    case "$line" in
+      p*)
+        pid=${line#p}
+        case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+        ;;
+      fcwd) [ -n "$pid" ] || return 1 ;;
+      n*)
+        [ -n "$pid" ] || return 1
+        path=${line#n}
+        case "$path" in
+          "$dir"|"$dir"/*)
+            [ -n "$pid" ] && [ "$pid" != "$$" ] && printf '%s\n' "$pid"
+            ;;
+        esac
+        ;;
+      '') ;;
+      *) return 1 ;;
+    esac
+  done <<LSOF
+$out
+LSOF
+}
+
+# fm_agent_process_dir_unoccupied: succeed only when <dir> exists and a
+# successful scan proves no process has its working directory inside it - the
+# process-level proof that a task's local copy is agent-free once its terminal
+# endpoint is gone and no backend classifier can answer for it. Every unproven
+# case fails: a missing lsof, a failed scan, or any occupant. On failure
+# FM_AGENT_PROCESS_DIR_REASON names why, for the caller's refusal message.
+# shellcheck disable=SC2034 # Output global, read by the sourcing caller.
+fm_agent_process_dir_unoccupied() {  # <dir>
+  local dir=$1 pids
+  FM_AGENT_PROCESS_DIR_REASON=
+  if [ -z "$dir" ] || [ ! -d "$dir" ]; then
+    FM_AGENT_PROCESS_DIR_REASON="'${dir:-none}' is not a directory"
+    return 1
+  fi
+  if ! command -v lsof >/dev/null 2>&1; then
+    FM_AGENT_PROCESS_DIR_REASON="lsof is unavailable, so no process scan can prove '$dir' is unoccupied"
+    return 1
+  fi
+  if ! pids=$(fm_agent_process_pids_with_cwd_under "$dir"); then
+    FM_AGENT_PROCESS_DIR_REASON="the process scan of '$dir' failed"
+    return 1
+  fi
+  if [ -n "$pids" ]; then
+    FM_AGENT_PROCESS_DIR_REASON="process(es) $(printf '%s' "$pids" | tr '\n' ' ' | sed 's/ $//') still run inside '$dir'"
+    return 1
+  fi
+  return 0
+}

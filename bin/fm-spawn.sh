@@ -545,6 +545,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-control-lib.sh
 . "$SCRIPT_DIR/fm-control-lib.sh"
+# shellcheck source=bin/fm-agent-process-lib.sh
+. "$SCRIPT_DIR/fm-agent-process-lib.sh"
 # shellcheck source=bin/fm-gate-refuse-lib.sh
 . "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
@@ -1666,6 +1668,20 @@ if [ "$RELAUNCH" -eq 1 ]; then
     echo "error: task $ID's recorded worktree '${RELAUNCH_WT:-none}' is missing; refusing to relaunch without the local copy its work lives in" >&2
     exit 1
   }
+  # A rebind is the one relaunch with no surviving endpoint to read, so the
+  # endpoint proof above cannot answer the question that still matters: is the
+  # AGENT gone, or only its terminal? An agent whose pane was destroyed keeps
+  # running with its working directory inside the recorded worktree, and
+  # launching a replacement there would put two agents on one local copy. The
+  # process scan is the only evidence left, so an unproven worktree refuses
+  # (bin/fm-agent-process-lib.sh owns the scan, which teardown asks the same
+  # question of). Adoption of a surviving `dead` endpoint is unaffected: that
+  # endpoint's own classifier already answered for the agent.
+  if [ "$RELAUNCH_REBIND" -eq 1 ] \
+    && ! fm_agent_process_dir_unoccupied "$RELAUNCH_WT"; then
+    echo "error: task $ID's recorded endpoint is gone, but its worktree $RELAUNCH_WT is not proven agent-free: $FM_AGENT_PROCESS_DIR_REASON; refusing to launch a second agent into it" >&2
+    exit 1
+  fi
   if [ "$KIND" = secondmate ]; then
     FIRSTMATE_HOME=$(fm_meta_get "$RELAUNCH_META" home)
     [ -n "$FIRSTMATE_HOME" ] || FIRSTMATE_HOME=$RELAUNCH_WT

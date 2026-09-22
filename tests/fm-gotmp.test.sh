@@ -186,7 +186,7 @@ test_task_tmp_refuses_foreign_owned_path() {
     fail "prepare adopted a foreign-owned root"
   fi
   case "$out" in
-    *"refusing to use it"*) ;;
+    *"refusing to stage the launch command there"*) ;;
     *) fail "foreign-owned refusal lacked a diagnostic: $out" ;;
   esac
   [ ! -e "$foreign/gotmp" ] || fail "prepare wrote into a foreign-owned root"

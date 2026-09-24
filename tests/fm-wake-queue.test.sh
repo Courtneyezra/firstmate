@@ -438,9 +438,10 @@ secondmate_stall_watch_leg() { # <dir> <leg> <mode> [arg...]
   esac
   [ -z "$progress" ] || progress_start=$(cat "$progress" 2>/dev/null || true)
   rm -f "$beat"
-  # These legs pin wake-loop stall behavior only; the endpoint liveness tick
-  # (default-on in production) would relaunch the dead fixture endpoints and
-  # confound every wake assertion, so park it for the life of the watcher.
+  # These legs pin wake-loop stall behavior only. A large cadence alone does
+  # not suppress the first endpoint tick when its marker is absent; seed it so
+  # every watcher launch and restart leaves the fixture endpoints untouched.
+  touch "$dir/state/.secondmate-liveness-tick"
   FM_SECONDMATE_LIVENESS_SECS=99999999 "$WATCH" >"$out" 2>"$err" &
   pid=$!
   case "$mode" in

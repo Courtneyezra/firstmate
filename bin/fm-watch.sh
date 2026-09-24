@@ -999,8 +999,8 @@ EOF
 # every other verdict lands only in the triage log. A mate that keeps dying is
 # parked after SECONDMATE_LIVENESS_MAX_ATTEMPTS ledgered attempts inside
 # SECONDMATE_LIVENESS_WINDOW_SECS: the bound marker wakes once, further probes
-# stay silent, and a later live probe clears the marker so a manually
-# recovered mate rejoins the guarantee. The per-mate liveness lock serializes
+# stay silent, and a later live probe ledgers a `rearmed` row and clears the
+# marker so a manually recovered mate rejoins the guarantee with a full budget. The per-mate liveness lock serializes
 # this tick against a concurrent session-start sweep, so neither side can kill
 # or re-probe an endpoint the other is mid-relaunch on.
 secondmate_liveness_tick() {
@@ -1072,6 +1072,11 @@ secondmate_liveness_tick() {
         ;;
       alive)
         if [ -e "$bound_marker" ] || [ -L "$bound_marker" ]; then
+          fm_secondmate_liveness_ledger_add "$id" rearmed || {
+            fm_secondmate_liveness_unlock "$id"
+            echo "watcher: secondmate $id relaunch ledger is unwritable; auto-relaunch stays paused" >&2
+            return 1
+          }
           rm -f "$bound_marker" || {
             fm_secondmate_liveness_unlock "$id"
             return 1

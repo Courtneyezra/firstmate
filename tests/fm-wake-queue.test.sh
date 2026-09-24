@@ -2965,16 +2965,21 @@ test_secondmate_liveness_tick_attempt_bound_parks_then_rearm_on_alive() {
   kill_liveness_leg "$pid"
   [ ! -e "$state/.secondmate-relaunch-bound-sm1" ] \
     || fail "a live probe did not clear the bound marker"
+  [ "$(awk -F '\t' '$2 == "rearmed"' "$ledger" | wc -l | tr -d ' ')" -eq 1 ] \
+    || fail "the live rearm was not ledgered exactly once: $(cat "$ledger")"
   drain_liveness_wakes "$dir"
   rm -f "$state/.secondmate-liveness-tick"
-  # The three seeded attempts still sit inside the window, so this leg runs a
-  # wider bound: the point is that a cleared marker re-arms relaunch at all.
-  run_liveness_leg "$dir" rearmed-dead FM_FAKE_TMUX_CURRENT_COMMAND=zsh FM_FAKE_WINDOW_GONE=1 \
-    FM_SECONDMATE_LIVENESS_MAX_ATTEMPTS=10; pid=$LIVENESS_PID
+  # The three seeded attempts still sit inside the window, yet the rearm
+  # restores the full default budget: the next death relaunches, not re-parks.
+  run_liveness_leg "$dir" rearmed-dead FM_FAKE_TMUX_CURRENT_COMMAND=zsh FM_FAKE_WINDOW_GONE=1; pid=$LIVENESS_PID
   wait_for_exit "$pid" 300 || fail "a rearmed mate was not auto-relaunched on its next death"
   grep -F 'check: secondmate sm1 auto-relaunched' "$dir/watch-rearmed-dead.out" >/dev/null \
-    || fail "the rearmed mate's relaunch did not wake: $(cat "$dir/watch-rearmed-dead.out")"
-  pass "watch liveness: the attempt bound parks a flapping mate once and a live probe rearms it"
+    || fail "the rearmed mate's relaunch did not wake: $(cat "$dir/watch-rearmed-dead.out" "$dir/watch-rearmed-dead.err")"
+  [ ! -e "$state/.secondmate-relaunch-bound-sm1" ] \
+    || fail "a rearmed mate was re-parked on its pre-rearm attempts"
+  [ "$(awk -F '\t' '$2 == "attempt"' "$ledger" | wc -l | tr -d ' ')" -eq 4 ] \
+    || fail "the ledger did not keep its pre-rearm history plus the new attempt: $(cat "$ledger")"
+  pass "watch liveness: the attempt bound parks a flapping mate once and a live probe rearms a full budget"
 }
 
 test_secondmate_liveness_tick_relaunch_failure_reports_once() {

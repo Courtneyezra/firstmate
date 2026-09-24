@@ -53,8 +53,6 @@ FM_SM_LIVE_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
 # shellcheck source=bin/fm-backend.sh
 . "$FM_SM_LIVE_LIB_DIR/fm-backend.sh"
-# shellcheck source=bin/fm-wake-lib.sh
-. "$FM_SM_LIVE_LIB_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-remote-readiness-lib.sh
 . "$FM_SM_LIVE_LIB_DIR/fm-remote-readiness-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
@@ -63,11 +61,22 @@ FM_SM_LIVE_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # Per-task probe+kill+relaunch serialization. A busy lock means another
 # supervisor (the other sweep, or a racing tick) is mid-episode on this mate;
 # callers skip and let that episode finish rather than probe a moving target.
+# The lock helpers live in bin/fm-wake-lib.sh, which creates the state
+# directory when sourced; load it only when a lock is actually taken so that
+# sourcing this library stays side-effect free for read-only bootstrap runs.
+fm_sm_live_require_locks() {
+  command -v fm_lock_try_acquire >/dev/null 2>&1 && return 0
+  # shellcheck source=bin/fm-wake-lib.sh
+  . "$FM_SM_LIVE_LIB_DIR/fm-wake-lib.sh"
+}
+
 fm_secondmate_liveness_lock() {  # <id>
+  fm_sm_live_require_locks || return 1
   fm_lock_try_acquire "$STATE/.secondmate-liveness-$1.lock"
 }
 
 fm_secondmate_liveness_unlock() {  # <id>
+  fm_sm_live_require_locks || return 0
   fm_lock_release "$STATE/.secondmate-liveness-$1.lock" 2>/dev/null || true
 }
 
@@ -75,15 +84,17 @@ fm_sm_live_first_line() {
   printf '%s\n' "$1" | sed -n '1s/[[:space:]]\{1,\}/ /g;1p'
 }
 
-# One line per relaunch attempt and one per outcome, keyed by epoch. The
-# watcher bound counts `attempt` rows inside its window; the whole file is the
-# durable per-mate relaunch record the captain can count to see frequency.
-# Fails when the row cannot be appended.
-fm_secondmate_liveness_ledger_add() {  # <id> <attempt|relaunched|failed>
+# One line per relaunch attempt and one per outcome, keyed by epoch, plus a
+# `rearmed` row when a live probe lifts a parked mate. The watcher bound counts
+# `attempt` rows inside its window and after the last `rearmed` row; the whole
+# file is the durable per-mate relaunch record the captain can count to see
+# frequency. Fails when the row cannot be appended.
+fm_secondmate_liveness_ledger_add() {  # <id> <attempt|relaunched|failed|rearmed>
   printf '%s\t%s\n' "$(date +%s)" "$2" >> "$STATE/.secondmate-relaunch-$1" 2>/dev/null
 }
 
-# Count of attempt rows no older than <window-secs>. An absent ledger counts
+# Count of attempt rows no older than <window-secs> that follow the last
+# `rearmed` row. An absent ledger counts
 # zero; an existing ledger that cannot be read fails rather than counting zero.
 fm_secondmate_liveness_recent_attempts() {  # <id> <window-secs>
   local id=$1 window=$2 now cutoff ledger
@@ -95,7 +106,7 @@ fm_secondmate_liveness_recent_attempts() {  # <id> <window-secs>
   now=$(date +%s)
   cutoff=$((now - window))
   awk -F '\t' -v cutoff="$cutoff" \
-    '$1 ~ /^[0-9]+$/ && $1 >= cutoff && $2 == "attempt" { n++ } END { print n + 0 }' \
+    '$2 == "rearmed" { n = 0; next } $1 ~ /^[0-9]+$/ && $1 >= cutoff && $2 == "attempt" { n++ } END { print n + 0 }' \
     "$ledger" 2>/dev/null
 }
 

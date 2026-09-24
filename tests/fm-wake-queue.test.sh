@@ -3058,6 +3058,44 @@ test_secondmate_liveness_tick_fails_closed_on_ledger_errors() {
   pass "watch liveness: an unwritable or unreadable relaunch ledger refuses to kill or spawn"
 }
 
+test_secondmate_liveness_tick_error_keeps_scanning_and_wakes() {
+  local dir state pid out home rc
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "watch liveness: mid-tick ledger error skipped (root ignores file modes)"
+    return 0
+  fi
+  dir=$(make_secondmate_liveness_case liveness-mid-error)
+  state="$dir/state"
+  home="$TMP_ROOT/liveness-mid-error-mate2"
+  mkdir -p "$home/bin" "$home/data" "$home/state" "$home/config" "$home/projects"
+  printf 'sm2\n' > "$home/.fm-secondmate-home"
+  printf '# Firstmate\n' > "$home/AGENTS.md"
+  printf 'charter\n' > "$home/data/charter.md"
+  printf 'window=firstmate:fm-sm2\nkind=secondmate\nharness=claude\nbackend=tmux\nhome=%s\n' \
+    "$home" > "$state/sm2.meta"
+  : > "$state/.secondmate-relaunch-sm1"
+  chmod 000 "$state/.secondmate-relaunch-sm1"
+
+  # sm1 errors first; the tick must still recover sm2 and surface its wake.
+  run_liveness_leg "$dir" mid-error FM_FAKE_WINDOW_GONE=1; pid=$LIVENESS_PID
+  rc=0
+  wait_for_exit "$pid" 300 || rc=$?
+  chmod 644 "$state/.secondmate-relaunch-sm1"
+  out="$dir/watch-mid-error.out"
+  [ "$rc" -eq 0 ] || fail "a per-mate ledger error discarded the tick's pending wake (rc=$rc): $(cat "$out" "$dir/watch-mid-error.err")"
+  grep -F 'check: secondmate sm2 auto-relaunched' "$out" >/dev/null \
+    || fail "a mate after the ledger error was not recovered and surfaced: $(cat "$out" "$dir/watch-mid-error.err")"
+  grep -F 'watcher: secondmate sm1 liveness: relaunch ledger is unreadable' "$dir/watch-mid-error.err" >/dev/null \
+    || fail "the per-mate ledger error was not reported: $(cat "$dir/watch-mid-error.err")"
+  [ "$(grep -c 'new-window' "$dir/tmux.log")" -eq 1 ] \
+    || fail "exactly the healthy mate should have been relaunched: $(cat "$dir/tmux.log")"
+  [ ! -s "$state/.secondmate-relaunch-sm1" ] \
+    || fail "the errored mate gained ledger rows: $(cat "$state/.secondmate-relaunch-sm1")"
+  [ "$(grep -c 'secondmate-relaunch-sm2-' "$state/.wake-queue")" -eq 1 ] \
+    || fail "the healthy mate's relaunch row was not queued: $(cat "$state/.wake-queue")"
+  pass "watch liveness: a per-mate error keeps scanning, recovers later mates, and still wakes"
+}
+
 test_secondmate_liveness_tick_skips_mate_whose_lock_is_held() {
   local dir state pid holder
   dir=$(make_secondmate_liveness_case liveness-locked)
@@ -3190,5 +3228,6 @@ test_secondmate_liveness_tick_cadence_gates_the_probe
 test_secondmate_liveness_tick_attempt_bound_parks_then_rearm_on_alive
 test_secondmate_liveness_tick_relaunch_failure_reports_once
 test_secondmate_liveness_tick_fails_closed_on_ledger_errors
+test_secondmate_liveness_tick_error_keeps_scanning_and_wakes
 test_secondmate_liveness_tick_skips_mate_whose_lock_is_held
 test_secondmate_liveness_tick_preserves_unreachable_remote

@@ -1388,7 +1388,7 @@ done
 printf '%s\tattempt\n' "$(date +%s)" > "$PARENT/state/.secondmate-relaunch-ios"
 printf '%s\tdead\n' "$(date +%s)" > "$PARENT/state/.secondmate-relaunch-bound-ios"
 liveness_lock="$PARENT/state/.secondmate-liveness-ios.lock"
-( STATE="$PARENT/state" bash -c '. "$1" && fm_lock_acquire_wait "$2" && sleep 120' \
+( STATE="$PARENT/state" exec bash -c '. "$1" && fm_lock_acquire_wait "$2" && exec sleep 120' \
     _ "$ROOT/bin/fm-wake-lib.sh" "$liveness_lock" ) &
 liveness_holder_pid=$!
 liveness_wait=0

@@ -1010,7 +1010,7 @@ secondmate_liveness_tick() {
   [ "$(age_of "$tick_marker")" -ge "$SECONDMATE_LIVENESS_SECS" ] || return 0
   touch "$tick_marker" || return 1
   local now=$(( $(date +%s) )) meta id kind
-  local bound_marker attempts notify_key reason queued first_reason=
+  local bound_marker attempts notify_key reason queued err first_reason='' failed=0
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
     kind=$(fm_meta_get "$meta" kind 2>/dev/null || true)
@@ -1021,83 +1021,61 @@ secondmate_liveness_tick() {
     fm_secondmate_liveness_lock "$id" || continue
     fm_secondmate_liveness_probe "$meta" "$id" poll
     bound_marker="$STATE/.secondmate-relaunch-bound-$id"
+    reason='' notify_key='' err=''
     case "$FM_SM_LIVE_STATUS" in
       relaunchable)
         if [ -e "$bound_marker" ] || [ -L "$bound_marker" ]; then
-          fm_secondmate_liveness_unlock "$id"
-          continue
-        fi
-        attempts=$(fm_secondmate_liveness_recent_attempts "$id" "$SECONDMATE_LIVENESS_WINDOW_SECS") || {
-          fm_secondmate_liveness_unlock "$id"
-          echo "watcher: secondmate $id relaunch ledger is unreadable; endpoint left $FM_SM_LIVE_STATE" >&2
-          return 1
-        }
-        if [ "$attempts" -ge "$SECONDMATE_LIVENESS_MAX_ATTEMPTS" ]; then
-          printf '%s\t%s\n' "$now" "$FM_SM_LIVE_STATE" > "$bound_marker" || {
-            fm_secondmate_liveness_unlock "$id"
-            return 1
-          }
-          reason="check: secondmate $id auto-relaunch paused after $SECONDMATE_LIVENESS_MAX_ATTEMPTS attempts in ${SECONDMATE_LIVENESS_WINDOW_SECS}s; endpoint still $FM_SM_LIVE_STATE - relaunch it manually or retire the route"
-          notify_key="secondmate-relaunch-bound-$id"
-          queued=$(fm_wake_queued_keys check)
-          if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
-            fm_wake_append check "$notify_key" "$reason" || {
-              fm_secondmate_liveness_unlock "$id"
-              return 1
-            }
+          :
+        elif ! attempts=$(fm_secondmate_liveness_recent_attempts "$id" "$SECONDMATE_LIVENESS_WINDOW_SECS"); then
+          err="relaunch ledger is unreadable; endpoint left $FM_SM_LIVE_STATE"
+        elif [ "$attempts" -ge "$SECONDMATE_LIVENESS_MAX_ATTEMPTS" ]; then
+          if printf '%s\t%s\n' "$now" "$FM_SM_LIVE_STATE" > "$bound_marker"; then
+            reason="check: secondmate $id auto-relaunch paused after $SECONDMATE_LIVENESS_MAX_ATTEMPTS attempts in ${SECONDMATE_LIVENESS_WINDOW_SECS}s; endpoint still $FM_SM_LIVE_STATE - relaunch it manually or retire the route"
+            notify_key="secondmate-relaunch-bound-$id"
+          else
+            err="relaunch park marker could not be written; endpoint left $FM_SM_LIVE_STATE"
           fi
-          fm_secondmate_liveness_unlock "$id"
-          [ -n "$first_reason" ] || first_reason=$reason
         elif fm_secondmate_liveness_relaunch "$meta" "$id" "$SECONDMATE_LIVENESS_TIMEOUT"; then
-          fm_secondmate_liveness_unlock "$id"
           reason="check: secondmate $id auto-relaunched after $FM_SM_LIVE_CAUSE ($FM_SM_LIVE_WHERE)"
           notify_key="secondmate-relaunch-$id-$now"
-          queued=$(fm_wake_queued_keys check)
-          if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
-            fm_wake_append check "$notify_key" "$reason" || return 1
-          fi
-          [ -n "$first_reason" ] || first_reason=$reason
+        elif [ "$FM_SM_LIVE_STATUS" = skipped ]; then
+          err=$FM_SM_LIVE_REASON
         else
-          fm_secondmate_liveness_unlock "$id"
-          if [ "$FM_SM_LIVE_STATUS" = skipped ]; then
-            echo "watcher: secondmate $id: $FM_SM_LIVE_REASON" >&2
-            return 1
-          fi
           reason="check: secondmate $id auto-relaunch failed after $FM_SM_LIVE_CAUSE: $(fm_sm_live_first_line "$FM_SM_LIVE_OUT")"
           notify_key="secondmate-relaunch-failed-$id-$now"
-          queued=$(fm_wake_queued_keys check)
-          if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
-            fm_wake_append check "$notify_key" "$reason" || return 1
-          fi
-          [ -n "$first_reason" ] || first_reason=$reason
         fi
         ;;
       alive)
         if [ -e "$bound_marker" ] || [ -L "$bound_marker" ]; then
-          fm_secondmate_liveness_ledger_add "$id" rearmed || {
-            fm_secondmate_liveness_unlock "$id"
-            echo "watcher: secondmate $id relaunch ledger is unwritable; auto-relaunch stays paused" >&2
-            return 1
-          }
-          rm -f "$bound_marker" || {
-            fm_secondmate_liveness_unlock "$id"
-            return 1
-          }
-          triage_log "secondmate $id live again; auto-relaunch pause cleared"
+          if ! fm_secondmate_liveness_ledger_add "$id" rearmed; then
+            err="relaunch ledger is unwritable; auto-relaunch stays paused"
+          elif ! rm -f "$bound_marker"; then
+            err="relaunch park marker could not be cleared; auto-relaunch stays paused"
+          else
+            triage_log "secondmate $id live again; auto-relaunch pause cleared"
+          fi
         fi
-        fm_secondmate_liveness_unlock "$id"
         ;;
       skipped)
         triage_log "secondmate $id liveness: $FM_SM_LIVE_REASON"
-        fm_secondmate_liveness_unlock "$id"
-        ;;
-      *)
-        fm_secondmate_liveness_unlock "$id"
         ;;
     esac
+    fm_secondmate_liveness_unlock "$id"
+    if [ -n "$reason" ]; then
+      queued=$(fm_wake_queued_keys check)
+      if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
+        fm_wake_append check "$notify_key" "$reason" || err="check wake row could not be queued"
+      fi
+      [ -n "$first_reason" ] || first_reason=$reason
+    fi
+    if [ -n "$err" ]; then
+      echo "watcher: secondmate $id liveness: $err" >&2
+      triage_log "secondmate $id liveness error: $err" || true
+      failed=1
+    fi
   done
   [ -z "$first_reason" ] || wake "$first_reason"
-  return 0
+  [ "$failed" -eq 0 ]
 }
 
 # Consecutive wedge-escalation count for a window past FM_WEDGE_DEMAND_INSPECT_COUNT

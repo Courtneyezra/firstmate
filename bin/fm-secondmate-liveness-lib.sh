@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034 # Probe/relaunch output globals are read by sourcing callers.
 # fm-secondmate-liveness-lib.sh - shared persistent-secondmate endpoint liveness
 # probing and recovery. bin/fm-bootstrap.sh owns the session-start sweep and
 # bin/fm-watch.sh owns the ordinary-supervision poll tick; both drive this

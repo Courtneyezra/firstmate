@@ -198,7 +198,7 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # Shared secondmate endpoint probe + guarded relaunch; the watcher's poll tick
 # drives the same library so session start and ordinary supervision recover
 # from identical evidence through an identical path.
-# shellcheck source=bin/fm-secondmate-liveness-lib.sh disable=SC1091
+# shellcheck source=/dev/null # Analyzed separately as a canonical lint root.
 . "$SCRIPT_DIR/fm-secondmate-liveness-lib.sh"
 # fm-timing-lib.sh is inert unless FM_TIMING_LOG names a file, which only the
 # deferred network stage sets, so an ordinary bootstrap run records nothing.

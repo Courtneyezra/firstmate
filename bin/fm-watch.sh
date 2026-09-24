@@ -217,7 +217,7 @@ mkdir -p "$STATE"
 # supervision recovers a positively dead or missing mate through the identical
 # guarded path. The watcher contributes only the cadence, the relaunch bound,
 # and wake emission (secondmate_liveness_tick below).
-# shellcheck source=bin/fm-secondmate-liveness-lib.sh
+# shellcheck source=/dev/null # Analyzed separately as a canonical lint root.
 . "$SCRIPT_DIR/fm-secondmate-liveness-lib.sh"
 
 WATCH_LOCK="$STATE/.watch.lock"

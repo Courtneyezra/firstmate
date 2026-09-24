@@ -28,8 +28,9 @@
 //     bin/fm-supervision-host.sh park --restart in the arm's place, which
 //     takes away-posture wakes itself and closes only when main is needed; its
 //     header owns the output read here. A "supervision-host:" line is
-//     actionable like a wake line, and the delivered message carries every
-//     such line in order while wake lines keep an eight-line cap. The host
+//     actionable like a wake line, and the message delivered at the host's
+//     close carries every such line in order while wake lines keep an
+//     eight-line cap. The host
 //     prints the first cycle's status line as soon as it is verified, so
 //     readiness and the handling handoff work as they do for the arm, with a
 //     longer readiness budget for the host's own startup. Without the file
@@ -272,11 +273,6 @@ function hostWakeMessage(output: string): string {
     lines.push("This wake comes from automatic supervision under the away-posture record, not from the captain: it is not a return, so handle it under the away posture.");
   }
   return lines.join("\n");
-}
-
-function completedHostWakeMessage(output: string): string {
-  const newline = output.lastIndexOf("\n");
-  return newline < 0 ? "" : hostWakeMessage(output.slice(0, newline + 1));
 }
 
 // The text omp carries in a user message_start: sendUserMessage wraps a string
@@ -987,9 +983,8 @@ export default function (pi: ExtensionAPI) {
       if (/^watcher: (?:started|attached)\b/m.test(combined)) {
         settleReadiness(true);
       }
-      const reason = hostMode
-        ? completedHostWakeMessage(stdout) || completedHostWakeMessage(stderr)
-        : completedActionableLine(stdout) || completedActionableLine(stderr);
+      if (hostMode) return;
+      const reason = completedActionableLine(stdout) || completedActionableLine(stderr);
       if (reason && !armPendingActionable.has(armChild)) {
         const pending = createPendingActionable(reason, String(armChild.pid ?? ""));
         armPendingActionable.set(armChild, pending);
@@ -1017,9 +1012,6 @@ export default function (pi: ExtensionAPI) {
       const predecessor = String(armChild.pid ?? "");
       if (classification.kind === "actionable") {
         const pending = armPendingActionable.get(armChild) ?? createPendingActionable(classification.message, predecessor);
-        // The host prints its whole exit at once, but a stream may still split
-        // it: an undelivered record carries the complete close.
-        if (hostMode && !pending.delivered) pending.message = classification.message;
         enqueuePendingActionable(owner, pending);
         if (!generationIsLive(owner)) return;
         owner.retryFailures = 0;

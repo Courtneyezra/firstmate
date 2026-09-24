@@ -721,6 +721,74 @@ EOF
   pass ".omp watch extension: a host-only boundary rides the replacement handoff and replays in the successor session"
 }
 
+# A host whose exit reaches the extension in separate stream chunks is
+# delivered once at its close: a successor host whose status and signal lines
+# land while the previous wake is still being delivered, with its outcome lines
+# after a pause, reaches main as one follow-up carrying both.
+test_watch_extension_delivers_a_split_host_close_whole() {
+  local repo home log out status
+  repo="$TMP_ROOT/watch-host-split/repo"; home="$TMP_ROOT/watch-host-split/home"; log="$TMP_ROOT/watch-host-split/arm.log"
+  install_omp_extension_fixture "$repo"
+  mkdir -p "$home/state" "$home/config"
+  : > "$home/config/supervision-host"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = --handling-delivered ] && exit 0
+exit 1
+SH
+  cat > "$repo/bin/fm-supervision-host.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'host=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+started="watcher: started pid=$$ (beacon fresh) recovery-generation=gen-$$"
+case "$(grep -c '^host=' "$FM_ARM_LOG")" in
+  1)
+    printf '%s\n' "$started"
+    sleep 1
+    printf 'signal: omp-host first\n'
+    exit 0
+    ;;
+  2)
+    printf '%s\nsignal: omp-host second\n' "$started"
+    sleep 1
+    printf 'supervision-host: outcome 2 for demo [captain]: fixture split\n'
+    exit 0
+    ;;
+esac
+printf '%s\n' "$started"
+sleep 30
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh" "$repo/bin/fm-supervision-host.sh"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_WATCH_REARM_RETRY_LIMIT=1 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 \
+    EXT="$repo/.omp/extensions/fm-primary-omp-watch.ts" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { writeFileSync } from "node:fs";
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const handlers = new Map(); let tool = null; const sent = [];
+const pi = {
+  on(e, h) { handlers.set(e, h); },
+  registerCommand() {},
+  registerTool(t) { tool = t; },
+  sendUserMessage(m, o) { sent.push({ m, o }); return undefined; },
+};
+const mod = await import(pathToFileURL(process.env.EXT).href);
+mod.default(pi);
+await tool.execute();
+for (let i = 0; i < 80 && sent.length < 2; i += 1) await new Promise((r) => setTimeout(r, 100));
+const second = sent.filter((item) => item.m.includes("signal: omp-host second"));
+if (second.length !== 1) throw new Error(`expected one follow-up for the split close, saw ${second.length}: ${JSON.stringify(sent)}`);
+if (!second[0].m.includes("supervision-host: outcome 2 for demo [captain]: fixture split")) {
+  throw new Error(`the split close was delivered without its outcome line: ${second[0].m}`);
+}
+await handlers.get("session_shutdown")({}, {});
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "omp watch extension split host close: $out"
+  [ -z "$out" ] || fail "omp watch extension split host close test printed output: $out"
+  pass ".omp watch extension: a host close split across stream chunks reaches main as one whole follow-up"
+}
+
 test_detection_anchored_name_and_marker_precedence
 test_lock_identity_and_liveness_classification
 test_spawn_launch_line_and_worker_wiring
@@ -734,3 +802,4 @@ test_turnend_guard_extension_compels_one_continuation
 test_watch_extension_arms_and_delivers
 test_watch_extension_runs_the_supervision_host
 test_watch_extension_replays_a_host_only_boundary_across_replacement
+test_watch_extension_delivers_a_split_host_close_whole

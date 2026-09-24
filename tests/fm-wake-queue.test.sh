@@ -2862,6 +2862,34 @@ test_secondmate_liveness_tick_relaunches_missing_endpoint() {
   pass "watch liveness: a missing secondmate endpoint is relaunched without a pre-kill"
 }
 
+test_secondmate_liveness_tick_relaunches_every_dead_mate_before_waking() {
+  local dir state pid out home id
+  dir=$(make_secondmate_liveness_case liveness-several)
+  state="$dir/state"
+  home="$TMP_ROOT/liveness-several-mate2"
+  mkdir -p "$home/bin" "$home/data" "$home/state" "$home/config" "$home/projects"
+  printf 'sm2\n' > "$home/.fm-secondmate-home"
+  printf '# Firstmate\n' > "$home/AGENTS.md"
+  printf 'charter\n' > "$home/data/charter.md"
+  printf 'window=firstmate:fm-sm2\nkind=secondmate\nharness=claude\nbackend=tmux\nhome=%s\n' \
+    "$home" > "$state/sm2.meta"
+
+  run_liveness_leg "$dir" several FM_FAKE_WINDOW_GONE=1; pid=$LIVENESS_PID
+  wait_for_exit "$pid" 300 || fail "the watcher did not exit on its auto-relaunch wake"
+  out="$dir/watch-several.out"
+  [ "$(grep -c 'check: secondmate sm[12] auto-relaunched' "$out")" -eq 1 ] \
+    || fail "one liveness tick did not wake exactly once: $(cat "$out" "$dir/watch-several.err")"
+  [ "$(grep -c 'new-window' "$dir/tmux.log")" -eq 2 ] \
+    || fail "the tick did not relaunch every dead mate before waking: $(cat "$dir/tmux.log")"
+  for id in sm1 sm2; do
+    [ "$(awk -F '\t' '$2 == "relaunched"' "$state/.secondmate-relaunch-$id" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
+      || fail "$id's relaunch was not ledgered: $(cat "$state/.secondmate-relaunch-$id" 2>/dev/null)"
+    [ "$(grep -c "secondmate-relaunch-$id-" "$state/.wake-queue")" -eq 1 ] \
+      || fail "$id's relaunch did not queue its own check row: $(cat "$state/.wake-queue")"
+  done
+  pass "watch liveness: one tick relaunches every dead mate, queues a row each, and wakes once"
+}
+
 test_secondmate_liveness_tick_leaves_alive_and_inconclusive_untouched() {
   local dir state pid
   dir=$(make_secondmate_liveness_case liveness-quiet)
@@ -3156,6 +3184,7 @@ test_interruption_before_and_after_raw_commit
 test_wake_queue_prune_task
 test_secondmate_liveness_tick_relaunches_dead_endpoint_once
 test_secondmate_liveness_tick_relaunches_missing_endpoint
+test_secondmate_liveness_tick_relaunches_every_dead_mate_before_waking
 test_secondmate_liveness_tick_leaves_alive_and_inconclusive_untouched
 test_secondmate_liveness_tick_cadence_gates_the_probe
 test_secondmate_liveness_tick_attempt_bound_parks_then_rearm_on_alive

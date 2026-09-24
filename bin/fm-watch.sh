@@ -994,21 +994,23 @@ EOF
 # probe rules, the kill ordering, and the guarded relaunch). On a bounded
 # cadence each registered mate's recorded endpoint is probed once; only a
 # recovery-grade `dead` or `missing` verdict relaunches, every relaunch
-# (success or failure) becomes exactly one durable `check` wake - the wake
-# queue row plus this watcher's delivery record are the durable record - and
-# every other verdict lands only in the triage log. A mate that keeps dying is
-# parked after SECONDMATE_LIVENESS_MAX_ATTEMPTS ledgered attempts inside
-# SECONDMATE_LIVENESS_WINDOW_SECS: the bound marker wakes once, further probes
-# stay silent, and a later live probe ledgers a `rearmed` row and clears the
-# marker so a manually recovered mate rejoins the guarantee with a full budget. The per-mate liveness lock serializes
-# this tick against a concurrent session-start sweep, so neither side can kill
-# or re-probe an endpoint the other is mid-relaunch on.
+# (success or failure) becomes exactly one durable `check` wake row, and every
+# other verdict lands only in the triage log. The tick finishes every mate
+# before it wakes once on the first outcome, so one dead mate never delays
+# another's recovery; the drain surfaces every queued row. A mate that keeps
+# dying is parked after SECONDMATE_LIVENESS_MAX_ATTEMPTS ledgered attempts
+# inside SECONDMATE_LIVENESS_WINDOW_SECS: the bound marker wakes once, further
+# probes stay silent, and a later live probe ledgers a `rearmed` row and clears
+# the marker so a manually recovered mate rejoins the guarantee with a full
+# budget. The per-mate liveness lock serializes this tick against a concurrent
+# session-start sweep, so neither side can kill or re-probe an endpoint the
+# other is mid-relaunch on.
 secondmate_liveness_tick() {
   local tick_marker="$STATE/.secondmate-liveness-tick"
   [ "$(age_of "$tick_marker")" -ge "$SECONDMATE_LIVENESS_SECS" ] || return 0
   touch "$tick_marker" || return 1
   local now=$(( $(date +%s) )) meta id kind
-  local bound_marker attempts notify_key reason queued
+  local bound_marker attempts notify_key reason queued first_reason=
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
     kind=$(fm_meta_get "$meta" kind 2>/dev/null || true)
@@ -1045,7 +1047,7 @@ secondmate_liveness_tick() {
             }
           fi
           fm_secondmate_liveness_unlock "$id"
-          wake "$reason"
+          [ -n "$first_reason" ] || first_reason=$reason
         elif fm_secondmate_liveness_relaunch "$meta" "$id" "$SECONDMATE_LIVENESS_TIMEOUT"; then
           fm_secondmate_liveness_unlock "$id"
           reason="check: secondmate $id auto-relaunched after $FM_SM_LIVE_CAUSE ($FM_SM_LIVE_WHERE)"
@@ -1054,7 +1056,7 @@ secondmate_liveness_tick() {
           if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
             fm_wake_append check "$notify_key" "$reason" || return 1
           fi
-          wake "$reason"
+          [ -n "$first_reason" ] || first_reason=$reason
         else
           fm_secondmate_liveness_unlock "$id"
           if [ "$FM_SM_LIVE_STATUS" = skipped ]; then
@@ -1067,7 +1069,7 @@ secondmate_liveness_tick() {
           if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
             fm_wake_append check "$notify_key" "$reason" || return 1
           fi
-          wake "$reason"
+          [ -n "$first_reason" ] || first_reason=$reason
         fi
         ;;
       alive)
@@ -1094,6 +1096,7 @@ secondmate_liveness_tick() {
         ;;
     esac
   done
+  [ -z "$first_reason" ] || wake "$first_reason"
   return 0
 }
 
@@ -2585,8 +2588,8 @@ while :; do
 
   # Endpoint liveness runs before queue observation: a positively dead or
   # missing secondmate endpoint is relaunched here on a bounded cadence, which
-  # is also what unsticks that mate's foreign wake queue. A relaunch wake exits
-  # the cycle like every other wake, so this tick's marker is stamped before
+  # is also what unsticks that mate's foreign wake queue. The tick's single
+  # wake exits the cycle like every other wake, so its marker is stamped before
   # any relaunch and the restarted watcher will not re-probe early.
   secondmate_liveness_tick || {
     echo "watcher: secondmate liveness check failed" >&2

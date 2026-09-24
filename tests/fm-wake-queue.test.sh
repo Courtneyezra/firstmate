@@ -2997,6 +2997,34 @@ test_secondmate_liveness_tick_relaunch_failure_reports_once() {
   pass "watch liveness: a failed auto-relaunch wakes once with its cause and is ledgered"
 }
 
+test_secondmate_liveness_tick_fails_closed_on_ledger_errors() {
+  local dir state pid ledger mode rc
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "watch liveness: ledger permission errors skipped (root ignores file modes)"
+    return 0
+  fi
+  for mode in 444 000; do
+    dir=$(make_secondmate_liveness_case "liveness-ledger-$mode")
+    state="$dir/state"
+    ledger="$state/.secondmate-relaunch-sm1"
+    : > "$ledger"
+    chmod "$mode" "$ledger"
+    run_liveness_leg "$dir" ledger FM_FAKE_TMUX_CURRENT_COMMAND=zsh; pid=$LIVENESS_PID
+    rc=0
+    wait_for_exit "$pid" 300 || rc=$?
+    chmod 644 "$ledger"
+    [ "$rc" -eq 1 ] || fail "a mode-$mode relaunch ledger did not fail the watcher (rc=$rc): $(cat "$dir/watch-ledger.out" "$dir/watch-ledger.err")"
+    grep -F 'secondmate liveness check failed' "$dir/watch-ledger.err" >/dev/null \
+      || fail "a mode-$mode ledger failure was not reported: $(cat "$dir/watch-ledger.err")"
+    [ ! -s "$dir/tmux.log" ] \
+      || fail "a mode-$mode relaunch ledger still killed or spawned: $(cat "$dir/tmux.log")"
+    [ ! -s "$ledger" ] || fail "a mode-$mode ledger gained rows: $(cat "$ledger")"
+    ! grep -F 'secondmate-relaunch' "$state/.wake-queue" >/dev/null 2>&1 \
+      || fail "a mode-$mode ledger failure queued a relaunch wake: $(cat "$state/.wake-queue")"
+  done
+  pass "watch liveness: an unwritable or unreadable relaunch ledger refuses to kill or spawn"
+}
+
 test_secondmate_liveness_tick_skips_mate_whose_lock_is_held() {
   local dir state pid holder
   dir=$(make_secondmate_liveness_case liveness-locked)
@@ -3127,5 +3155,6 @@ test_secondmate_liveness_tick_leaves_alive_and_inconclusive_untouched
 test_secondmate_liveness_tick_cadence_gates_the_probe
 test_secondmate_liveness_tick_attempt_bound_parks_then_rearm_on_alive
 test_secondmate_liveness_tick_relaunch_failure_reports_once
+test_secondmate_liveness_tick_fails_closed_on_ledger_errors
 test_secondmate_liveness_tick_skips_mate_whose_lock_is_held
 test_secondmate_liveness_tick_preserves_unreachable_remote

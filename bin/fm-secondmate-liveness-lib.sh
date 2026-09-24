@@ -78,18 +78,25 @@ fm_sm_live_first_line() {
 # One line per relaunch attempt and one per outcome, keyed by epoch. The
 # watcher bound counts `attempt` rows inside its window; the whole file is the
 # durable per-mate relaunch record the captain can count to see frequency.
+# Fails when the row cannot be appended.
 fm_secondmate_liveness_ledger_add() {  # <id> <attempt|relaunched|failed>
-  printf '%s\t%s\n' "$(date +%s)" "$2" >> "$STATE/.secondmate-relaunch-$1" 2>/dev/null || true
+  printf '%s\t%s\n' "$(date +%s)" "$2" >> "$STATE/.secondmate-relaunch-$1" 2>/dev/null
 }
 
-# Count of attempt rows no older than <window-secs>.
+# Count of attempt rows no older than <window-secs>. An absent ledger counts
+# zero; an existing ledger that cannot be read fails rather than counting zero.
 fm_secondmate_liveness_recent_attempts() {  # <id> <window-secs>
-  local id=$1 window=$2 now cutoff
+  local id=$1 window=$2 now cutoff ledger
+  ledger="$STATE/.secondmate-relaunch-$id"
+  if [ ! -e "$ledger" ] && [ ! -L "$ledger" ]; then
+    printf '0\n'
+    return 0
+  fi
   now=$(date +%s)
   cutoff=$((now - window))
   awk -F '\t' -v cutoff="$cutoff" \
     '$1 ~ /^[0-9]+$/ && $1 >= cutoff && $2 == "attempt" { n++ } END { print n + 0 }' \
-    "$STATE/.secondmate-relaunch-$id" 2>/dev/null || printf '0\n'
+    "$ledger" 2>/dev/null
 }
 
 # fm_secondmate_liveness_probe <meta> <id> <full|poll>
@@ -241,12 +248,19 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
 # per-mate ledger, then runs the guarded secondmate spawn. A positive timeout
 # wraps the spawn in fm_run_timed so a watcher poll stays bounded; 124/137 mean
 # the bound fired. Returns the spawn exit status; combined spawn output is in
-# FM_SM_LIVE_OUT and the status in FM_SM_LIVE_RC. Caller holds the liveness
-# lock and owns reporting.
+# FM_SM_LIVE_OUT and the status in FM_SM_LIVE_RC. When the attempt row cannot
+# be ledgered, nothing is killed or spawned: the verdict becomes
+# FM_SM_LIVE_STATUS=skipped with FM_SM_LIVE_REASON set and this returns 1.
+# Caller holds the liveness lock and owns reporting.
 fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
   local meta=$1 id=$2 timeout=${3:-}
   FM_SM_LIVE_OUT= FM_SM_LIVE_RC=0
-  fm_secondmate_liveness_ledger_add "$id" attempt
+  if ! fm_secondmate_liveness_ledger_add "$id" attempt; then
+    FM_SM_LIVE_STATUS=skipped
+    FM_SM_LIVE_REASON="relaunch ledger $STATE/.secondmate-relaunch-$id is unwritable; endpoint left $FM_SM_LIVE_STATE"
+    FM_SM_LIVE_RC=1
+    return 1
+  fi
   if [ "$FM_SM_LIVE_KILL" = 1 ]; then
     local backend target window
     backend=$(fm_backend_of_meta "$meta")
@@ -265,9 +279,9 @@ fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
   fi
   FM_SM_LIVE_RC=$rc
   if [ "$rc" -eq 0 ]; then
-    fm_secondmate_liveness_ledger_add "$id" relaunched
+    fm_secondmate_liveness_ledger_add "$id" relaunched || true
   else
-    fm_secondmate_liveness_ledger_add "$id" failed
+    fm_secondmate_liveness_ledger_add "$id" failed || true
   fi
   return "$rc"
 }

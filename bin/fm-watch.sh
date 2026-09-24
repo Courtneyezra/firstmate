@@ -1025,7 +1025,11 @@ secondmate_liveness_tick() {
           fm_secondmate_liveness_unlock "$id"
           continue
         fi
-        attempts=$(fm_secondmate_liveness_recent_attempts "$id" "$SECONDMATE_LIVENESS_WINDOW_SECS")
+        attempts=$(fm_secondmate_liveness_recent_attempts "$id" "$SECONDMATE_LIVENESS_WINDOW_SECS") || {
+          fm_secondmate_liveness_unlock "$id"
+          echo "watcher: secondmate $id relaunch ledger is unreadable; endpoint left $FM_SM_LIVE_STATE" >&2
+          return 1
+        }
         if [ "$attempts" -ge "$SECONDMATE_LIVENESS_MAX_ATTEMPTS" ]; then
           printf '%s\t%s\n' "$now" "$FM_SM_LIVE_STATE" > "$bound_marker" || {
             fm_secondmate_liveness_unlock "$id"
@@ -1053,6 +1057,10 @@ secondmate_liveness_tick() {
           wake "$reason"
         else
           fm_secondmate_liveness_unlock "$id"
+          if [ "$FM_SM_LIVE_STATUS" = skipped ]; then
+            echo "watcher: secondmate $id: $FM_SM_LIVE_REASON" >&2
+            return 1
+          fi
           reason="check: secondmate $id auto-relaunch failed after $FM_SM_LIVE_CAUSE: $(fm_sm_live_first_line "$FM_SM_LIVE_OUT")"
           notify_key="secondmate-relaunch-failed-$id-$now"
           queued=$(fm_wake_queued_keys check)

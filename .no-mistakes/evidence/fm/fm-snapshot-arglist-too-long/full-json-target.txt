@@ -1,0 +1,4 @@
+$ FM_HOME=<busy home> target/bin/fm-fleet-snapshot.sh --json
+exit=0 stdout_bytes=822877 seconds=46
+stderr:
+summary: {"tasks":150,"top_keys":["backlog","contributions","fm_home","generated","main_inventory","roots","schema","scout_reports","secondmate_current","secondmate_guidance","secondmate_landed","tasks"]}

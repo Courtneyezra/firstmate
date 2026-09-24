@@ -1,0 +1,4 @@
+$ FM_HOME=<home with one task holding 1500 open keyed decisions> base/bin/fm-fleet-snapshot.sh --json
+exit=124 stdout_bytes=0
+stderr:
+summary: 

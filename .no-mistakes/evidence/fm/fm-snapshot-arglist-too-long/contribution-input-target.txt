@@ -1,0 +1,4 @@
+$ FM_HOME=<busy home: 400 done rows, 150 task metas> target/bin/fm-fleet-snapshot.sh --contribution-input
+exit=0 stdout_bytes=544033
+stderr:
+summary: {"backlog_records":400,"tasks":150,"first":"done-0001","last":"done-0400"}

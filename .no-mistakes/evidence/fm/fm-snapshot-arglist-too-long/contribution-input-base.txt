@@ -1,0 +1,5 @@
+$ FM_HOME=<busy home: 400 done rows, 150 task metas> base/bin/fm-fleet-snapshot.sh --contribution-input
+exit=0 stdout_bytes=0
+stderr:
+/tmp/fmsnap-lab.aurg/base/bin/fm-fleet-snapshot.sh: line 1994: /usr/bin/jq: Argument list too long
+summary: 

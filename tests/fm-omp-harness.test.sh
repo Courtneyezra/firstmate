@@ -652,6 +652,75 @@ EOF
   pass ".omp watch extension: an opted-in home runs the supervision host and relays every host line"
 }
 
+# A host cycle boundary can close with only a "supervision-host:" line; left
+# unconsumed across a session replacement it rides the persisted handoff and
+# the successor session loads and replays it.
+test_watch_extension_replays_a_host_only_boundary_across_replacement() {
+  local repo home log out status
+  repo="$TMP_ROOT/watch-host-handoff/repo"; home="$TMP_ROOT/watch-host-handoff/home"; log="$TMP_ROOT/watch-host-handoff/arm.log"
+  install_omp_extension_fixture "$repo"
+  mkdir -p "$home/state" "$home/config"
+  : > "$home/config/supervision-host"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = --handling-delivered ] && exit 0
+exit 1
+SH
+  cat > "$repo/bin/fm-supervision-host.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'host=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=gen-%s\n' "$$" "$$"
+if [ "$(grep -c '^host=' "$FM_ARM_LOG")" -eq 1 ]; then
+  sleep 1
+  printf 'supervision-host: outcome 1 for demo [captain]: fixture boundary\n'
+  exit 0
+fi
+sleep 30
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh" "$repo/bin/fm-supervision-host.sh"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_WATCH_REARM_RETRY_LIMIT=1 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 \
+    EXT="$repo/.omp/extensions/fm-primary-omp-watch.ts" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const handoff = `${process.env.FM_HOME}/state/extensions/omp-primary-watch/session-replacement-actionable.json`;
+const handlers = new Map(); let tool = null; const sent = [];
+const pi = {
+  on(e, h) { handlers.set(e, h); },
+  registerCommand() {},
+  registerTool(t) { tool = t; },
+  sendUserMessage(m, o) { sent.push({ m, o }); return undefined; },
+};
+const mod = await import(pathToFileURL(process.env.EXT).href);
+mod.default(pi);
+await tool.execute();
+for (let i = 0; i < 60 && sent.length < 1; i += 1) await new Promise((r) => setTimeout(r, 100));
+if (sent.length !== 1) throw new Error(`expected one boundary follow-up, saw ${sent.length}: ${JSON.stringify(sent)}`);
+const boundary = "supervision-host: outcome 1 for demo [captain]: fixture boundary";
+if (!sent[0].m.includes(boundary)) throw new Error(`the follow-up lacks the boundary line: ${sent[0].m}`);
+// The session is replaced before omp consumes the boundary follow-up.
+await handlers.get("session_shutdown")({}, {});
+const stored = JSON.parse(readFileSync(handoff, "utf8"));
+if (stored.pending.length !== 1 || !stored.pending[0].message.includes(boundary)) {
+  throw new Error(`the unconsumed boundary did not ride the handoff: ${JSON.stringify(stored)}`);
+}
+await handlers.get("session_start")({ type: "session_start" }, {});
+for (let i = 0; i < 60 && sent.length < 2; i += 1) await new Promise((r) => setTimeout(r, 100));
+const replays = sent.slice(1);
+if (replays.some((item) => item.m.includes("watcher: FAILED"))) throw new Error(`the successor failed to load the handoff: ${JSON.stringify(replays)}`);
+if (replays.length !== 1 || !replays[0].m.includes(boundary)) throw new Error(`the successor did not replay the boundary: ${JSON.stringify(replays)}`);
+await handlers.get("before_agent_start")({ type: "before_agent_start", prompt: replays[0].m }, {});
+await handlers.get("session_shutdown")({}, {});
+if (existsSync(handoff)) throw new Error("a consumed replay must not ride the replacement handoff again");
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "omp watch extension host-only handoff: $out"
+  [ -z "$out" ] || fail "omp watch extension host-only handoff test printed output: $out"
+  pass ".omp watch extension: a host-only boundary rides the replacement handoff and replays in the successor session"
+}
+
 test_detection_anchored_name_and_marker_precedence
 test_lock_identity_and_liveness_classification
 test_spawn_launch_line_and_worker_wiring
@@ -664,3 +733,4 @@ test_ownership_proof_is_omp_keyed
 test_turnend_guard_extension_compels_one_continuation
 test_watch_extension_arms_and_delivers
 test_watch_extension_runs_the_supervision_host
+test_watch_extension_replays_a_host_only_boundary_across_replacement

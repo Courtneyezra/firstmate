@@ -319,7 +319,8 @@ function validatePendingActionable(value: unknown): PendingActionableClose {
     typeof (value as { token?: unknown }).token !== "string" ||
     !/^[0-9]+-[0-9]+-[0-9]+$/.test((value as { token: string }).token) ||
     typeof (value as { message?: unknown }).message !== "string" ||
-    !actionableLine((value as { message: string }).message) ||
+    (!actionableLine((value as { message: string }).message) &&
+      !/^supervision-host:/m.test((value as { message: string }).message)) ||
     typeof (value as { predecessorArmPid?: unknown }).predecessorArmPid !== "string" ||
     !/^[0-9]*$/.test((value as { predecessorArmPid: string }).predecessorArmPid) ||
     ((value as { delivered?: unknown }).delivered !== undefined &&

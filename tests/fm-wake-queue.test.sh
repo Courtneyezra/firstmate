@@ -3150,7 +3150,7 @@ test_secondmate_liveness_tick_skips_mate_whose_lock_is_held() {
 }
 
 test_secondmate_liveness_tick_preserves_unreachable_remote() {
-  local dir state ssh_count_before
+  local dir state
   dir=$(make_secondmate_liveness_case liveness-remote-down)
   state="$dir/state"
   rm -f "$state/sm1.meta"
@@ -3175,7 +3175,6 @@ exit 255
 SH
   chmod +x "$dir/fakebin/ssh"
   : > "$dir/ssh.log"
-  ssh_count_before=0
 
   run_liveness_leg "$dir" unreachable FM_SSH_BIN="$dir/fakebin/ssh" FM_FAKE_SSH_LOG="$dir/ssh.log"; pid=$LIVENESS_PID
   sleep 4

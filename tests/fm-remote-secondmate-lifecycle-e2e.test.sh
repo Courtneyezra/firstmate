@@ -1387,6 +1387,18 @@ while [ ! -f "$TMP_ROOT/launch.entered" ]; do
 done
 printf '%s\tattempt\n' "$(date +%s)" > "$PARENT/state/.secondmate-relaunch-ios"
 printf '%s\tdead\n' "$(date +%s)" > "$PARENT/state/.secondmate-relaunch-bound-ios"
+liveness_lock="$PARENT/state/.secondmate-liveness-ios.lock"
+( STATE="$PARENT/state" bash -c '. "$1" && fm_lock_acquire_wait "$2" && sleep 120' \
+    _ "$ROOT/bin/fm-wake-lib.sh" "$liveness_lock" ) &
+liveness_holder_pid=$!
+liveness_wait=0
+while [ ! -d "$liveness_lock" ]; do
+  kill -0 "$liveness_holder_pid" 2>/dev/null || fail "liveness lock holder exited before acquiring the lock"
+  liveness_wait=$((liveness_wait + 1))
+  [ "$liveness_wait" -le 250 ] || fail "liveness lock holder never acquired the lock"
+  sleep 0.02
+done
+liveness_owner=$(cat "$liveness_lock/pid")
 remote_env "$ROOT/bin/fm-teardown.sh" ios > "$TMP_ROOT/teardown-serialized.out" 2>&1 &
 teardown_pid=$!
 sleep 0.2
@@ -1410,10 +1422,14 @@ assert_absent "$PARENT/state/ios.meta" "remote retirement did not remove parent 
 assert_absent "$PARENT/state/.backlog-handoff-ios.wake-pending" \
   "remote retirement left receiver wake state that could poison a replacement route"
 assert_absent "$retired_wake_rec" "remote retirement left the retired receiver wake correlation"
-assert_absent "$PARENT/state/.secondmate-relaunch-ios" \
-  "remote retirement left the relaunch ledger a same-id replacement would inherit"
-assert_absent "$PARENT/state/.secondmate-relaunch-bound-ios" \
-  "remote retirement left the relaunch park marker a same-id replacement would inherit"
+assert_present "$PARENT/state/.secondmate-relaunch-ios" \
+  "remote retirement removed the relaunch ledger under an active liveness episode"
+assert_present "$PARENT/state/.secondmate-relaunch-bound-ios" \
+  "remote retirement removed the relaunch park marker under an active liveness episode"
+[ "$(cat "$liveness_lock/pid" 2>/dev/null)" = "$liveness_owner" ] \
+  || fail "remote retirement removed or took a liveness lock another episode still holds"
+kill "$liveness_holder_pid" 2>/dev/null || true
+wait "$liveness_holder_pid" 2>/dev/null || true
 assert_no_grep '- ios ' "$PARENT/data/secondmates.md" "remote retirement did not remove the registry route"
 jq -e --arg workspace "$SIBLING_WORKSPACE" --arg pane "$SIBLING_PANE" '
   any(.workspaces[]; .workspace_id == $workspace and .label == "2ndmate-macos")

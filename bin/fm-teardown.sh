@@ -985,11 +985,25 @@ remote_secondmate_teardown() {
   [ ! -e "$CONFIG/fleet-ledger" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-fleet-ledger.sh" cleaned_up "$ID" || true
   status_retire_presentation_task "$STATE" "$ID" || return 1
   fm_backlog_atomic_transition remove "$STATE/$ID.meta" "task record" "$STATE" || return 1
-  rm -f -- "$STATE/$ID.turn-ended" "$STATE/$ID.progress" \
-    "$STATE/.secondmate-relaunch-$ID" "$STATE/.secondmate-relaunch-bound-$ID"
-  rm -rf -- "$STATE/.secondmate-liveness-$ID.lock" "$STATE/.secondmate-liveness-$ID.lock.steal"
+  rm -f -- "$STATE/$ID.turn-ended" "$STATE/$ID.progress"
+  secondmate_relaunch_state_retire
   printf 'teardown %s complete (remote %s:%s)\n' "$ID" "$remote_host" "$remote_home"
   return 0
+}
+
+# The secondmate relaunch ledger and park marker (bin/fm-secondmate-liveness-lib.sh)
+# are retired only under that library's per-mate liveness lock, so an episode
+# mid-relaunch keeps its lock and its records; a busy lock leaves both in place.
+secondmate_relaunch_state_retire() {
+  local lock="$STATE/.secondmate-liveness-$ID.lock"
+  local ledger="$STATE/.secondmate-relaunch-$ID" bound="$STATE/.secondmate-relaunch-bound-$ID"
+  [ -e "$ledger" ] || [ -L "$ledger" ] || [ -e "$bound" ] || [ -L "$bound" ] || return 0
+  fm_lock_try_acquire "$lock" || {
+    echo "note: secondmate $ID liveness episode in progress; relaunch ledger left in place" >&2
+    return 0
+  }
+  rm -f -- "$ledger" "$bound"
+  fm_lock_release "$lock" || true
 }
 
 remote_secondmate_teardown_locked() {
@@ -3669,11 +3683,8 @@ rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.progress" \
   "$STATE/$ID.control-relaunch" "$STATE/$ID.control-relaunch.meta-prior" \
   "$STATE/$ID.control-relaunch.brief-prior" "$STATE/$ID.control-relaunch.note" \
   "$STATE/$ID.reconcile-nudged" "$STATE/$ID.gemini-settings.json" "$STATE/$ID.devin-config.json" \
-  "$STATE/.$ID.branch-outcome-index" \
-  "$STATE/.secondmate-relaunch-$ID" "$STATE/.secondmate-relaunch-bound-$ID"
-# Secondmate endpoint-liveness serialization (bin/fm-secondmate-liveness-lib.sh)
-# is a lock directory, so it and any orphaned steal sidecar go by -rf.
-rm -rf "$STATE/.secondmate-liveness-$ID.lock" "$STATE/.secondmate-liveness-$ID.lock.steal"
+  "$STATE/.$ID.branch-outcome-index"
+secondmate_relaunch_state_retire
 # The steering inbox (bin/fm-task-inbox-lib.sh) is runtime state for the
 # retired endpoint; teardown only runs after landing is confirmed, so any
 # leftover unhandled steer here is moot rather than unlanded work.

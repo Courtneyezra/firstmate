@@ -248,13 +248,19 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
 # per-mate ledger, then runs the guarded secondmate spawn. A positive timeout
 # wraps the spawn in fm_run_timed so a watcher poll stays bounded; 124/137 mean
 # the bound fired. Returns the spawn exit status; combined spawn output is in
-# FM_SM_LIVE_OUT and the status in FM_SM_LIVE_RC. When the attempt row cannot
-# be ledgered, nothing is killed or spawned: the verdict becomes
+# FM_SM_LIVE_OUT and the status in FM_SM_LIVE_RC. When the ledger cannot be
+# read or the attempt row cannot be appended, nothing is killed or spawned: the verdict becomes
 # FM_SM_LIVE_STATUS=skipped with FM_SM_LIVE_REASON set and this returns 1.
 # Caller holds the liveness lock and owns reporting.
 fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
   local meta=$1 id=$2 timeout=${3:-}
   FM_SM_LIVE_OUT= FM_SM_LIVE_RC=0
+  if ! fm_secondmate_liveness_recent_attempts "$id" 0 >/dev/null; then
+    FM_SM_LIVE_STATUS=skipped
+    FM_SM_LIVE_REASON="relaunch ledger $STATE/.secondmate-relaunch-$id is unreadable; endpoint left $FM_SM_LIVE_STATE"
+    FM_SM_LIVE_RC=1
+    return 1
+  fi
   if ! fm_secondmate_liveness_ledger_add "$id" attempt; then
     FM_SM_LIVE_STATUS=skipped
     FM_SM_LIVE_REASON="relaunch ledger $STATE/.secondmate-relaunch-$id is unwritable; endpoint left $FM_SM_LIVE_STATE"

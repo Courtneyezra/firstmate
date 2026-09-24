@@ -403,6 +403,33 @@ test_sweep_skips_mate_whose_liveness_lock_is_held() {
   pass "sweep: a mate mid-episode under the shared liveness lock is skipped entirely"
 }
 
+test_sweep_refuses_relaunch_on_ledger_errors() {
+  local w fb tmuxfb log out mode ledger word
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "sweep: ledger permission errors skipped (root ignores file modes)"
+    return 0
+  fi
+  for mode in 200 444; do
+    case "$mode" in 200) word=unreadable ;; *) word=unwritable ;; esac
+    w=$(new_world "sweep-ledger-$mode")
+    add_sm_home "$w" sm1 firstmate:fm-sm1
+    fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
+    log="$w/calls.log"; : > "$log"
+    ledger="$w/home/state/.secondmate-relaunch-sm1"
+    : > "$ledger"
+    chmod "$mode" "$ledger"
+
+    out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log")
+    chmod 644 "$ledger"
+
+    assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: skipped: relaunch ledger $ledger is $word" \
+      "a mode-$mode relaunch ledger should skip the relaunch with its reason"
+    [ ! -s "$log" ] || fail "a mode-$mode relaunch ledger still killed or spawned: $(cat "$log")"
+    [ ! -s "$ledger" ] || fail "a mode-$mode ledger gained rows: $(cat "$ledger")"
+  done
+  pass "sweep: an unreadable or unwritable relaunch ledger refuses to kill or spawn"
+}
+
 test_sweep_leaves_alive_secondmate_untouched() {
   local w fb tmuxfb log out
   w=$(new_world sweep-alive)
@@ -689,6 +716,7 @@ test_sweep_converges_no_retouch_once_alive
 test_sweep_skipped_under_detect_only
 test_sweep_noop_with_no_secondmate_meta
 test_sweep_skips_mate_whose_liveness_lock_is_held
+test_sweep_refuses_relaunch_on_ledger_errors
 test_remote_poll_probe_maps_states
 test_remote_poll_probe_unreachable_preserves_route
 

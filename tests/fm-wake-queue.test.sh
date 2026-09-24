@@ -3096,6 +3096,29 @@ test_secondmate_liveness_tick_error_keeps_scanning_and_wakes() {
   pass "watch liveness: a per-mate error keeps scanning, recovers later mates, and still wakes"
 }
 
+test_secondmate_liveness_tick_unqueued_outcome_is_an_error_not_a_wake() {
+  local dir state pid rc
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "watch liveness: unqueued-outcome check skipped (root ignores file modes)"
+    return 0
+  fi
+  dir=$(make_secondmate_liveness_case liveness-unqueued)
+  state="$dir/state"
+  : > "$state/.wake-queue"
+  chmod 444 "$state/.wake-queue"
+  run_liveness_leg "$dir" unqueued FM_FAKE_WINDOW_GONE=1; pid=$LIVENESS_PID
+  rc=0
+  wait_for_exit "$pid" 300 || rc=$?
+  chmod 644 "$state/.wake-queue"
+  [ "$rc" -eq 1 ] \
+    || fail "an outcome whose check row was never queued did not fail the watcher (rc=$rc): $(cat "$dir/watch-unqueued.out" "$dir/watch-unqueued.err")"
+  ! grep -F 'check: secondmate sm1 auto-relaunched' "$dir/watch-unqueued.out" >/dev/null \
+    || fail "an unqueued outcome was printed as a delivered wake: $(cat "$dir/watch-unqueued.out")"
+  grep -F 'watcher: secondmate sm1 liveness: check wake row could not be queued' "$dir/watch-unqueued.err" >/dev/null \
+    || fail "the unqueued outcome was not reported as an error: $(cat "$dir/watch-unqueued.err")"
+  pass "watch liveness: an outcome that could not be queued surfaces as an error, not a wake"
+}
+
 test_secondmate_liveness_tick_skips_mate_whose_lock_is_held() {
   local dir state pid holder
   dir=$(make_secondmate_liveness_case liveness-locked)
@@ -3229,5 +3252,6 @@ test_secondmate_liveness_tick_attempt_bound_parks_then_rearm_on_alive
 test_secondmate_liveness_tick_relaunch_failure_reports_once
 test_secondmate_liveness_tick_fails_closed_on_ledger_errors
 test_secondmate_liveness_tick_error_keeps_scanning_and_wakes
+test_secondmate_liveness_tick_unqueued_outcome_is_an_error_not_a_wake
 test_secondmate_liveness_tick_skips_mate_whose_lock_is_held
 test_secondmate_liveness_tick_preserves_unreachable_remote

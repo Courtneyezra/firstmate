@@ -1063,10 +1063,12 @@ secondmate_liveness_tick() {
     fm_secondmate_liveness_unlock "$id"
     if [ -n "$reason" ]; then
       queued=$(fm_wake_queued_keys check)
-      if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
-        fm_wake_append check "$notify_key" "$reason" || err="check wake row could not be queued"
+      if printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1 \
+        || fm_wake_append check "$notify_key" "$reason"; then
+        [ -n "$first_reason" ] || first_reason=$reason
+      else
+        err="check wake row could not be queued: $reason"
       fi
-      [ -n "$first_reason" ] || first_reason=$reason
     fi
     if [ -n "$err" ]; then
       echo "watcher: secondmate $id liveness: $err" >&2

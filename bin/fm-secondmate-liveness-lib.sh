@@ -131,7 +131,7 @@ fm_secondmate_liveness_recent_attempts() {  # <id> <window-secs>
 fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
   local meta=$1 id=$2 mode=$3
   FM_SM_LIVE_STATUS=skipped FM_SM_LIVE_STATE=unknown FM_SM_LIVE_KILL=0
-  FM_SM_LIVE_CAUSE= FM_SM_LIVE_WHERE= FM_SM_LIVE_REASON= FM_SM_LIVE_LINE=
+  FM_SM_LIVE_CAUSE='' FM_SM_LIVE_WHERE='' FM_SM_LIVE_REASON='' FM_SM_LIVE_LINE=''
   local window harness remote_host remote_rc out agent_state readiness_reason route_out remote_backend
   window=$(fm_meta_get "$meta" window)
   [ -n "$window" ] || { FM_SM_LIVE_STATUS=silent; return 0; }
@@ -265,7 +265,7 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
 # Caller holds the liveness lock and owns reporting.
 fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
   local meta=$1 id=$2 timeout=${3:-}
-  FM_SM_LIVE_OUT= FM_SM_LIVE_RC=0
+  FM_SM_LIVE_OUT='' FM_SM_LIVE_RC=0
   if ! fm_secondmate_liveness_recent_attempts "$id" 0 >/dev/null; then
     FM_SM_LIVE_STATUS=skipped
     FM_SM_LIVE_REASON="relaunch ledger $STATE/.secondmate-relaunch-$id is unreadable; endpoint left $FM_SM_LIVE_STATE"

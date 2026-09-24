@@ -38,7 +38,7 @@ Attended supervision on the host, `/quiet` on the host, and the daemon's retirem
 - Row eligibility: `bin/fm-branch-dispatch.mjs` is the command entry to `.pi/extensions/lib/fm-branch-dispatch.ts`, so the host and the Pi extension compute branch-claimable rows and their task scope from one owner; it also renders the wake message with the same away-posture tail.
 - The grant and the drain: `bin/fm-wake-grant.sh` publishes the branch's rows bound to the host's own process, and [watcher-continuity.md](watcher-continuity.md#per-actor-acknowledgement) owns the per-actor drain and acknowledgement the engine runs.
 - The prompt: `bin/fm-branch-prompt.sh` emits the same byte-stable prompt the Pi branch runs; each wake names its host's report surface.
-- The report surface: `bin/fm-branch-report.sh` is the command twin of the Pi branch's `fm_branch_report` tool, with the same task scoping, and it appends to the outcome store (`bin/fm-branch-outcome.sh`) plus a per-turn receipt the host requires.
+- The report surface: `bin/fm-branch-report.sh` is the command twin of the Pi branch's `fm_branch_report` tool, with the same task scoping, and it appends to the outcome store (`bin/fm-branch-outcome.sh`) plus a per-turn receipt the host requires; a row recorded after the captain returned is also queued for main as a durable check wake.
 - Leases and authority: `bin/fm-lease-lib.sh` owns the per-task leases, the main-owned role partition, and the away relocation; the host's engine runs with `FM_SUPERVISION_ACTOR=branch`, the session-lock holder as `FM_LEASE_HOLDER_PID`, and the primary's harness pin, so every guarded script treats it exactly as it treats the Pi branch.
 - The main side: [supervision-protocols/supervision-host.md](supervision-protocols/supervision-host.md) is what main reads at session start on an opted-in home, rendered for its harness.
 
@@ -50,6 +50,8 @@ The engine drains, handles, reports through `bin/fm-branch-report.sh`, and ackno
 The host counts the wake handled only when the turn exited cleanly, recorded at least one report, and left none of its granted rows in the wake queue; it releases the branch's leases and grant either way and parks on the successor only for a handled wake.
 A handled wake never reaches main, whether its outcome was routine or captain: captain outcomes wait in the outcome store, and the return brief (`bin/fm-afk-return.sh`) presents them.
 The one exception is a captain who returns while a turn is still running: the return brief was rendered before that turn's outcomes existed, so the host hands the close to main with those outcomes for main to relay, whether or not the turn handled its wake.
+That handoff is only the prompt delivery: each outcome recorded after the return is already a queued `check` wake, because the return owner archives the record before it reads the store and the report surface queues any row it records once the record is gone.
+So the outcome reaches main's drain even when the handoff is lost, as when a Cursor park superseded by the return turn's own end stops its host as the engine turn finishes.
 
 ## Failure direction
 

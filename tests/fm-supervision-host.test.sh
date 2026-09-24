@@ -37,6 +37,8 @@ FAKE_CLAUDE="$FAKEBIN/claude"
 #   return      handle, but the captain returns (the record is archived) before
 #               the turn ends
 #   return-fail the same, then exit nonzero without a result
+#   return-first the captain returns first, then handle, then block until the
+#               host is stopped (an owner killing its host at the turn's end)
 #   noack       the same as handle, but skip the acknowledgement
 #   chain       handle, then append a status line, so the next close is already
 #               waiting when the turn ends
@@ -66,7 +68,8 @@ ack=$(printf '%s\n' "$drain" | sed -n 's/^WAKE_ACK_REQUIRED: after handling comp
 task=$(sed -n 's/^tasks=//p' "$STATE/.supervision-host-turn" | awk '{ print $1 }')
 [ -n "$task" ] || task=fleet
 case "$mode" in
-  handle|hold-lease|return|return-fail|noack|chain|emptyresult)
+  handle|hold-lease|return|return-fail|return-first|noack|chain|emptyresult)
+    [ "$mode" != return-first ] || "$FM_REPO/bin/fm-afk-contract.sh" archive >> "$FM_HOME/engine-return.log" 2>&1
     "$FM_REPO/bin/fm-lease.sh" claim "$task" >> "$FM_HOME/engine-lease.log" 2>&1
     "$FM_REPO/bin/fm-branch-report.sh" --task "$task" --verdict routine --summary "stub handled $task" \
       >> "$FM_HOME/engine-report.log" 2>&1
@@ -78,6 +81,7 @@ case "$mode" in
       chain) printf 'working [at=%s]: chained %s\n' "$(date +%s)" "$n" >> "$STATE/demo.status" ;;
     esac
     [ "$mode" != return-fail ] || exit 3
+    [ "$mode" != return-first ] || sleep "$FM_TEST_STUB_MAX_BLOCK_SECONDS"
     [ "$mode" != emptyresult ] || { printf '{}\n'; exit 0; }
     result
     ;;
@@ -227,6 +231,36 @@ test_report_surface_enforces_actor_turn_and_scope() {
   pass "report surface: only the branch actor's current turn may report, and only on the tasks its wake names"
 }
 
+# The return brief is rendered after the record is archived, so a report made
+# after that may be missing from it: the report itself queues the relay for
+# main, durably, while a report made during the away window only waits for the
+# brief.
+test_report_after_the_return_is_queued_for_main() {
+  local home state out rc drained
+  home="$TMP_ROOT/report-return"
+  state="$home/state"
+  mkdir -p "$state"
+  FM_HOME="$home" "$CONTRACT" enter --words 'watch the fleet' >/dev/null 2>&1 || fail "fixture: could not record the away posture"
+  printf 'turn=t1\nrows=4\ntasks=alpha\nunscoped=0\nwake=signal: alpha.status\n' > "$state/.supervision-host-turn"
+
+  out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_BRANCH_REPORT_TURN=t1 "$REPORT" --task alpha --verdict routine --summary 'steered while away' 2>&1); rc=$?
+  expect_code 0 "$rc" "a report during the away window must be recorded"
+  assert_contains "$out" "it waits in the outcome store for MAIN" "a report during the away window waits for the return brief"
+  ! grep -qs 'supervision-host-return' "$state/.wake-queue" || fail "a report during the away window must not be queued for main"
+
+  FM_HOME="$home" "$CONTRACT" archive >/dev/null 2>&1 || fail "fixture: could not archive the away posture"
+  out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_BRANCH_REPORT_TURN=t1 "$REPORT" --task alpha --verdict captain --summary 'PR ready for review' 2>&1); rc=$?
+  expect_code 0 "$rc" "a report after the return must be recorded"
+  assert_contains "$out" "recorded seq 2 [captain]; the captain has returned, so it is queued for MAIN to relay" \
+    "a report after the return must say it is queued for main"
+  assert_re $'\tcheck\tsupervision-host-return:2\tcheck: supervision-host outcome 2 for alpha \\[captain\\] was recorded after the captain returned.*relay it to the captain: PR ready for review$' \
+    "$state/.wake-queue" "the late outcome must be a durable check wake for main"
+  drained=$(FM_HOME="$home" "$ROOT/bin/fm-wake-drain.sh" 2>&1)
+  assert_contains "$drained" "supervision-host outcome 2 for alpha [captain] was recorded after the captain returned" \
+    "main's drain must present the late outcome"
+  pass "report surface: an outcome recorded after the captain returned is queued durably for main"
+}
+
 # --- dispatch entry -----------------------------------------------------------
 
 test_dispatch_entry_scopes_rows_and_renders_the_away_tail() {
@@ -368,6 +402,41 @@ test_return_during_an_engine_turn_hands_its_outcomes_to_main() {
   assert_no_grep 'demo.status' "$home/state/.wake-queue" "the handled wake must stay acknowledged"
   watcher_live "$home" && fail "the host left its successor cycle running when it handed the outcome to main"
   pass "host: a captain return during an engine turn hands that turn's outcomes to main"
+}
+
+# The live failure this guards: a Cursor park superseded by the captain's
+# return kills its host as the engine turn ends, so the host's own handoff is
+# never printed. The outcome still reaches main: the next host's first cycle
+# resurfaces the durable queue and main's drain presents it.
+test_outcome_after_the_return_survives_a_host_killed_at_the_turn_end() {
+  local home host rc drained
+  home=$(make_home away-return-first away)
+  echo return-first > "$home/stub-mode"
+  start_host "$home"
+  wait_until 150 watcher_live "$home" || fail "return-first: the host never started a watcher cycle"
+  append_status "$home" 'finishing while the captain comes back'
+  wait_until 250 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" \
+    || fail "return-first: the late outcome was never queued: $(cat "$home/engine-report.log" 2>/dev/null)"
+  host=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
+  kill -TERM "$host"
+  wait_until 250 host_exited "$home" || fail "return-first: the stopped host did not exit"
+  rc=$(cat "$home/host.rc")
+  [ "$rc" -gt 128 ] || fail "fixture: the host was not stopped mid-turn (rc=$rc): $(cat "$home/host.out")"
+  assert_no_re '^supervision-host: ' "$home/host.out" "fixture: the stopped host printed a handoff, so this case proves nothing"
+  for f in "$home"/state/.supervision-host-result.* "$home"/state/.supervision-host-errors.*; do
+    [ -e "$f" ] && fail "a host stopped mid-turn left its turn file behind: $f"
+  done
+  assert_grep 'supervision-host-return:1' "$home/state/.wake-queue" "the late outcome must stay queued after its host died"
+
+  rm -f "$home/host.rc"
+  start_host "$home"
+  wait_until 250 host_exited "$home" || fail "return-first: the next host did not resurface the queued outcome"
+  assert_re '^check: rearm-resurface$' "$home/host.out" "the next host's first cycle must resurface the queue"
+  assert_re '	pass-through	attended	check: rearm-resurface' "$home/state/.supervision-host.log" "the attended resurface must reach main"
+  drained=$(FM_HOME="$home" "$ROOT/bin/fm-wake-drain.sh" 2>&1)
+  assert_contains "$drained" "supervision-host outcome 1 for demo [routine] was recorded after the captain returned" \
+    "main's drain must present the outcome the killed host never handed off"
+  pass "host: an outcome recorded after the return reaches main even when its host dies at the turn's end"
 }
 
 test_report_without_acknowledgement_hands_the_wake_to_main() {
@@ -601,6 +670,9 @@ test_first_cycle_status_streams_and_owner_options_reach_it() {
   [ "$(grep -c '^watcher: ' "$home/host.out")" -eq 1 ] || fail "stream: the status line must be printed once: $(cat "$home/host.out")"
   [ "$(sed -n '1p' "$home/host.out" | cut -c1-17)" = 'watcher: started ' ] || fail "stream: the status line must come first"
   assert_re '^signal: .*demo.status' "$home/host.out" "stream: the close must follow the status line"
+  # Main handles that close, so the next cycle has no episode to resurface.
+  FM_HOME="$home" "$ROOT/bin/fm-wake-drain.sh" >/dev/null 2> "$home/drain.err" || fail "stream: main's drain failed"
+  ack_drain_err "$home/state" "$home/drain.err" >/dev/null 2>&1 || fail "stream: main's acknowledgement failed: $(cat "$home/drain.err")"
 
   # A watcher a dead arm left behind, holding this home's watcher lock.
   FM_HOME="$home" PATH="$home/fakebin:$PATH" perl -e 'setpgrp(0, 0); exec @ARGV' "$ROOT/bin/fm-watch-arm.sh" \
@@ -611,12 +683,17 @@ test_first_cycle_status_streams_and_owner_options_reach_it() {
   stale=$(cat "$home/state/.watch.lock/pid")
   rm -f "$home/host.out" "$home/host.rc"
   start_host "$home" --restart
-  wait_until 150 grep -qs '^watcher: started pid=' "$home/host.out" || fail "stream: the restarting host never reported its cycle"
+  # Stopping the old watcher opens a downtime episode, so the fresh cycle may
+  # close on its resurface before the arm confirms it, and the arm then prints
+  # only that close (bin/fm-watch-arm.sh): either order is the owner's cycle.
+  wait_until 150 sh -c 'grep -qs "^watcher: started pid=" "$1/host.out" || [ -s "$1/host.rc" ]' _ "$home" \
+    || fail "stream: the restarting host never reported its cycle: $(cat "$home/host.out" "$home/claude.err" 2>/dev/null)"
   fresh=$(sed -n 's/^watcher: started pid=\([0-9]*\).*/\1/p' "$home/host.out")
   [ "$fresh" != "$stale" ] || fail "stream: --restart attached to the watcher it should have replaced"
   wait_until 100 sh -c '! kill -0 "$1" 2>/dev/null' _ "$stale" || fail "stream: --restart left the old watcher running"
   wait_until 200 host_exited "$home" || append_status "$home" 'second close' 'done'
   wait_until 200 host_exited "$home" || fail "stream: the restarting host's close did not reach main"
+  assert_re '^(signal: .*demo.status|check: rearm-resurface)$' "$home/host.out" "stream: the restarting host's close must reach main"
 
   # That close left an unacknowledged downtime episode; a host the owner starts
   # as the closed arm's successor takes it over as a handling successor
@@ -704,11 +781,13 @@ test_superseded_host_leaves_the_owner_untouched() {
 }
 
 test_report_surface_enforces_actor_turn_and_scope
+test_report_after_the_return_is_queued_for_main
 test_dispatch_entry_scopes_rows_and_renders_the_away_tail
 test_attended_close_passes_straight_to_main
 test_away_wake_is_handled_on_the_engine_and_never_reaches_main
 test_away_turn_without_a_report_hands_the_wake_to_main
 test_return_during_an_engine_turn_hands_its_outcomes_to_main
+test_outcome_after_the_return_survives_a_host_killed_at_the_turn_end
 test_report_without_acknowledgement_hands_the_wake_to_main
 test_return_during_a_failed_turn_still_hands_its_outcomes_to_main
 test_incomplete_engine_result_hands_the_wake_to_main

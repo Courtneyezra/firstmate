@@ -60,7 +60,10 @@
 # existed, so the host exits with the close, one "supervision-host:" line
 # naming them, and one line per outcome, for main to relay. The host injects
 # nothing and has no delivery path of its own; the owner's existing wake path
-# is the only way main hears from it.
+# is the only way main hears from it. That handoff is only a prompt: each
+# outcome recorded after the return is already a durable queued wake
+# (bin/fm-branch-report.sh), so it still reaches main when the host dies at the
+# turn's end or its owner drops the handoff, as a superseded Cursor park does.
 #
 # THE PARK BOUNDARY. Claude drops the exit 2 of a Stop hook it terminated at
 # the hook's configured timeout (docs/verification/supervision.md), Cursor's
@@ -189,6 +192,10 @@ ENGINE_SUBSHELL=
 SUCCESSOR_PID=
 SUCCESSOR_OUT=
 ENGINE_RUNNING=0
+# The running turn's result and diagnostics files, removed by the cleanup when
+# the host is stopped mid-turn.
+TURN_RESULT=
+TURN_ERRORS=
 # The first cycle's status line, printed as soon as the arm prints it
 # (header, OUTPUT) and left out of that cycle's close.
 READY_PENDING=1
@@ -311,7 +318,7 @@ stop_engine_turn() {
 
 # shellcheck disable=SC2329 # Invoked by the EXIT trap.
 cleanup() {
-  local rc=$?
+  local rc=$? f
   trap - EXIT HUP TERM INT
   if [ "$ENGINE_RUNNING" -eq 1 ]; then
     stop_engine_turn
@@ -324,6 +331,9 @@ cleanup() {
   fi
   release_branch_leases
   rm -f "$TURN_FILE" "$ENGINE_PID_FILE" 2>/dev/null || true
+  for f in "$TURN_RESULT" "$TURN_ERRORS"; do
+    case "$f" in "$STATE"/.supervision-host-*) rm -f "$f" 2>/dev/null || true ;; esac
+  done
   if [ -f "$HOST_RECORD" ] && [ "$(awk -F '\t' '$1 == "host" { print $2; exit }' "$HOST_RECORD" 2>/dev/null)" = "$HOST_PID" ]; then
     rm -f "$HOST_RECORD" 2>/dev/null || true
   fi
@@ -643,6 +653,8 @@ handle_away() {  # <reason-lines>
   fi
   result=$(mktemp "$STATE/.supervision-host-result.XXXXXX") || result=/dev/null
   errors=$(mktemp "$STATE/.supervision-host-errors.XXXXXX") || errors=/dev/null
+  TURN_RESULT=$result
+  TURN_ERRORS=$errors
   ENGINE_RUNNING=1
   # Backgrounded and waited, so a signal to the host is handled at once
   # instead of after the whole turn; the cleanup stops the engine.
@@ -673,11 +685,13 @@ handle_away() {  # <reason-lines>
   receipts=$(awk -F '\t' -v turn="$turn" '$1 == turn { n++ } END { print n + 0 }' "$RECEIPTS" 2>/dev/null)
   usage=$(fm_supervision_engine_result "$FM_SUPERVISION_ENGINE" "$result" "${ENGINE_COST:-0}" 2>/dev/null || true)
   [ "$result" = /dev/null ] || rm -f "$result"
+  TURN_RESULT=
   if [ "$rc" -eq 0 ] && [ "${receipts:-0}" -gt 0 ] && [ -z "$unacked" ] \
     && [ -n "$usage" ] && [ "${usage#error=0}" != "$usage" ]; then
     write_engine_record $((ENGINE_TURNS + 1)) "$(printf '%s\n' "$usage" | sed -n 's/.* conversation_cost=\([^ ]*\).*/\1/p')" \
       || rm -f "$ENGINE_RECORD"
     [ "$errors" = /dev/null ] || rm -f "$errors"
+    TURN_ERRORS=
     log_line "handled	turn=$turn	rc=$rc	reports=$receipts	$usage	$first"
     return 0
   fi
@@ -686,6 +700,7 @@ handle_away() {  # <reason-lines>
   rm -f "$ENGINE_RECORD"
   log_line "failed	turn=$turn	rc=$rc	reports=${receipts:-0}	unacked=${unacked:-none}	${usage:-no-result}	$(head -c 300 "$errors" 2>/dev/null | tr '\t\n' '  ')	$first"
   [ "$errors" = /dev/null ] || rm -f "$errors"
+  TURN_ERRORS=
   if fm_timed_out "$rc"; then
     HANDLE_WHY="the engine turn hit its ${TURN_TIMEOUT}s bound"
   elif [ "$rc" -eq 127 ]; then

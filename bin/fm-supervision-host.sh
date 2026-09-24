@@ -4,13 +4,34 @@
 # non-Pi primary (docs/supervision-host.md owns the design).
 #
 # Usage:
-#   fm-supervision-host.sh park
+#   fm-supervision-host.sh park [--restart]
 #
 # A primary's arm owner runs this in place of bin/fm-watch-arm.sh when the home
-# opted in (config/supervision-host); today that owner is the Claude Stop
-# auto-arm (bin/fm-claude-stop-autoarm.sh). To that owner it IS an arm: it
-# prints the arm's own lines and exits only when main is needed, and stays
-# parked across every close it handled itself.
+# opted in (config/supervision-host): the Claude Stop auto-arm
+# (bin/fm-claude-stop-autoarm.sh), the Cursor stop-hook park
+# (bin/fm-turnend-guard-cursor.sh), the OpenCode TUI plugin
+# (.opencode/plugins/fm-primary-watch-arm.js), the omp watch extension
+# (.omp/extensions/fm-primary-omp-watch.ts), Grok's model-owned background arm
+# (docs/supervision-protocols/grok.md), and Codex's foreground checkpoint
+# (bin/fm-watch-checkpoint.sh). To that owner it IS an arm: it prints the
+# arm's own lines and exits only when main is needed, and stays parked across
+# every close it handled itself. Each owner passes its harness as
+# FM_SUPERVISION_HOST_PRIMARY, which the engine carries as the primary pin.
+#
+# OUTPUT, the contract every owner reads. The first cycle's status line
+# ("watcher: started ..." or "watcher: attached ...") is printed as soon as the
+# arm prints it, so an owner that waits for arm readiness sees it at once;
+# everything else is printed in one write when the host exits: the close as
+# the arm printed it (without that status line), then any "supervision-host:"
+# lines. A "supervision-host:" line is a wake in its own right (the park
+# boundary prints nothing else); "supervision-host stood down: ..." means this
+# session or generation no longer owns supervision and the owner stands down
+# silently; an exit status above 128, or no output at all, means the host
+# itself died and the owner retries it. Any other close is judged exactly as
+# the arm's. --restart starts the first cycle with fm-watch-arm.sh --restart,
+# and an FM_WATCH_PREDECESSOR_ARM_PID the owner passes reaches that first
+# cycle only, for owners that start their own successor after every close
+# (OpenCode, omp).
 #
 # THE LOOP. It owns watcher cycles through bin/fm-watch-arm.sh. On each
 # actionable close:
@@ -42,7 +63,8 @@
 # is the only way main hears from it.
 #
 # THE PARK BOUNDARY. Claude drops the exit 2 of a Stop hook it terminated at
-# the hook's configured timeout (docs/verification/supervision.md), and a host
+# the hook's configured timeout (docs/verification/supervision.md), Cursor's
+# stop hook carries the same tracked 28800-second registration, and a host
 # that handles its own wakes is not shortened by them, so the host ends its
 # own park before that timeout: after FM_SUPERVISION_HOST_PARK_SECONDS (default
 # 27000, under the tracked 28800-second registration) it stops this home's
@@ -50,10 +72,13 @@
 # owner delivers as an ordinary wake; main drains, acknowledges, and ends its
 # turn, and that turn end starts the next park. The boundary is checked on
 # every loop pass, however many closes are already waiting, and an away close
-# whose engine turn could no longer finish before the boundary (the turn bound
+# whose engine turn could still be running at the turn limit (the turn bound
 # plus the engine grace), judged when the close arrives and again just before
 # the turn starts, is not handled: the host exits through the same boundary
-# with that close printed ahead of the line.
+# with that close printed ahead of the line. The turn limit is the boundary
+# itself unless the owner sets FM_SUPERVISION_HOST_PARK_LIMIT later: Codex's
+# checkpoint, whose bound is the park itself rather than a harness timeout,
+# lets a turn that starts before the boundary finish after it.
 #
 # OWNERSHIP. Before activation, every successor cycle, and every engine turn
 # the host proves this session still holds the fleet lock
@@ -81,7 +106,9 @@
 #
 # Tunables (environment): FM_SUPERVISION_HOST_PARK_SECONDS (27000; a positive
 # integer below the 28800-second registration, any other value is the default),
-# FM_SUPERVISION_HOST_TURN_TIMEOUT (1200), FM_SUPERVISION_HOST_ROTATE_TURNS (20:
+# FM_SUPERVISION_HOST_PARK_LIMIT (the park boundary; a later value below the
+# registration lets turns run past the boundary up to it, any other value is
+# the boundary), FM_SUPERVISION_HOST_TURN_TIMEOUT (1200), FM_SUPERVISION_HOST_ROTATE_TURNS (20:
 # a new engine conversation after this many turns; every main session start
 # also opens a new one), FM_SUPERVISION_HOST_READY_TIMEOUT (25: how long a
 # successor cycle may take to verify), FM_SUPERVISION_HOST_POLL (1).
@@ -102,10 +129,17 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 # shellcheck source=bin/fm-supervision-engine-lib.sh
 . "$SCRIPT_DIR/fm-supervision-engine-lib.sh"
 
+FIRST_ARM_RESTART=0
 case "${1:-}" in
-  park) ;;
+  park)
+    case "$#:${2:-}" in
+      1:) ;;
+      2:--restart) FIRST_ARM_RESTART=1 ;;
+      *) echo "usage: fm-supervision-host.sh park [--restart]" >&2; exit 2 ;;
+    esac
+    ;;
   -h|--help) sed -n '2,/^set -u/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
-  *) echo "usage: fm-supervision-host.sh park" >&2; exit 2 ;;
+  *) echo "usage: fm-supervision-host.sh park [--restart]" >&2; exit 2 ;;
 esac
 
 numeric_or() {  # <value> <default>
@@ -116,6 +150,8 @@ GRACE=${FM_GUARD_GRACE:-$(fm_poll_derived_grace)}
 ENGINE_GRACE=$(numeric_or "${FM_SUPERVISION_ENGINE_GRACE:-}" 30)
 PARK_SECONDS=$(numeric_or "${FM_SUPERVISION_HOST_PARK_SECONDS:-}" 27000)
 [ "$PARK_SECONDS" -lt 28800 ] 2>/dev/null || PARK_SECONDS=27000
+PARK_LIMIT=$(numeric_or "${FM_SUPERVISION_HOST_PARK_LIMIT:-}" "$PARK_SECONDS")
+{ [ "$PARK_LIMIT" -lt 28800 ] && [ "$PARK_LIMIT" -ge "$PARK_SECONDS" ]; } 2>/dev/null || PARK_LIMIT=$PARK_SECONDS
 TURN_TIMEOUT=$(numeric_or "${FM_SUPERVISION_HOST_TURN_TIMEOUT:-}" 1200)
 ROTATE_TURNS=$(numeric_or "${FM_SUPERVISION_HOST_ROTATE_TURNS:-}" 20)
 READY_TIMEOUT=$(numeric_or "${FM_SUPERVISION_HOST_READY_TIMEOUT:-}" 25)
@@ -124,6 +160,9 @@ AUTOARM_GEN=${FM_SUPERVISION_HOST_AUTOARM_GEN:-}
 AUTOARM_OWNER=${FM_SUPERVISION_HOST_OWNER_PID:-}
 PRIMARY=${FM_SUPERVISION_HOST_PRIMARY:-}
 [ -n "$PRIMARY" ] || PRIMARY=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
+# The owner's predecessor arm belongs to the first cycle only.
+OWNER_PREDECESSOR=${FM_WATCH_PREDECESSOR_ARM_PID:-}
+case "$OWNER_PREDECESSOR" in *[!0-9]*) OWNER_PREDECESSOR= ;; esac
 unset FM_WATCH_PREDECESSOR_ARM_PID FM_SUPERVISION_ACTOR FM_BRANCH_REPORT_TURN
 
 HOST_RECORD="$STATE/.supervision-host"
@@ -150,6 +189,10 @@ ENGINE_SUBSHELL=
 SUCCESSOR_PID=
 SUCCESSOR_OUT=
 ENGINE_RUNNING=0
+# The first cycle's status line, printed as soon as the arm prints it
+# (header, OUTPUT) and left out of that cycle's close.
+READY_PENDING=1
+READY_LINE=
 
 log_line() {  # <text>
   local tmp
@@ -312,13 +355,14 @@ host_still_owner() {
     && [ "$FM_AUTOARM_OUTCOME" = arming ]
 }
 
-start_arm() {  # <predecessor-arm-pid or empty>; sets the started pid/output
+start_arm() {  # <predecessor-arm-pid or empty> [--restart]; sets the started pid/output
   local predecessor=$1 out pid
+  shift
   out=$(mktemp "$STATE/.supervision-host-arm.XXXXXX") || return 1
   if [ -n "$predecessor" ]; then
-    FM_WATCH_PREDECESSOR_ARM_PID=$predecessor FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" >"$out" 2>&1 &
+    FM_WATCH_PREDECESSOR_ARM_PID=$predecessor FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" "$@" >"$out" 2>&1 &
   else
-    FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" >"$out" 2>&1 &
+    FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" "$@" >"$out" 2>&1 &
   fi
   pid=$!
   record_process arm "$pid"
@@ -330,9 +374,10 @@ boundary_reached() {
   [ $(( $(date +%s) - HOST_STARTED )) -ge "$PARK_SECONDS" ]
 }
 
-# True when an engine turn started now could still be running at the boundary.
+# True when an engine turn started now could still be running at the turn
+# limit (the boundary unless the owner set a later one).
 turn_crosses_boundary() {
-  [ $(( $(date +%s) - HOST_STARTED + TURN_TIMEOUT + ENGINE_GRACE )) -ge "$PARK_SECONDS" ]
+  [ $(( $(date +%s) - HOST_STARTED + TURN_TIMEOUT + ENGINE_GRACE )) -ge "$PARK_LIMIT" ]
 }
 
 # End the park at the boundary: stop the current and successor arms and this
@@ -346,10 +391,21 @@ boundary_exit() {
   SUCCESSOR_PID=
   SUCCESSOR_OUT=
   "$SCRIPT_DIR/fm-watch-arm.sh" --stop >/dev/null 2>&1 || true
-  print_close
   log_line "boundary	after $(( $(date +%s) - HOST_STARTED ))s"
-  printf 'supervision-host: cycle boundary - the host ended its park before the Stop hook timeout; drain, acknowledge, and end the turn, and the next park starts on its own\n'
+  emit 'supervision-host: cycle boundary - the host ended its park at its bound; drain, acknowledge, and end the turn, and the next park starts on its own'
   exit 0
+}
+
+# Print the first cycle's status line once the arm has written it in full.
+stream_ready_line() {
+  local complete line
+  complete=$(wc -l < "$ARM_OUT" 2>/dev/null | tr -d ' ')
+  case "$complete" in ''|0|*[!0-9]*) return 0 ;; esac
+  line=$(head -n "$complete" "$ARM_OUT" 2>/dev/null | grep -E -m 1 '^watcher: (started|attached) ' || true)
+  [ -n "$line" ] || return 0
+  printf '%s\n' "$line"
+  READY_LINE=$line
+  READY_PENDING=0
 }
 
 # Wait for the current arm to close. Returns 0 with ARM_TEXT set,
@@ -357,11 +413,18 @@ boundary_exit() {
 await_close() {
   while fm_pid_alive "$ARM_PID"; do
     refresh_process "$ARM_PID"
+    [ "$READY_PENDING" -eq 0 ] || stream_ready_line
     boundary_reached && return 1
     sleep "$POLL"
   done
   wait "$ARM_PID" 2>/dev/null || true
   ARM_TEXT=$(cat "$ARM_OUT" 2>/dev/null || true)
+  if [ -n "$READY_LINE" ]; then
+    # Already printed: drop its first occurrence from this first close.
+    ARM_TEXT=$(printf '%s\n' "$ARM_TEXT" | awk -v line="$READY_LINE" '!dropped && $0 == line { dropped = 1; next } { print }')
+    READY_LINE=
+  fi
+  READY_PENDING=0
   forget_process "$ARM_PID"
   rm -f "$ARM_OUT" 2>/dev/null || true
   CLOSED_ARM_PID=$ARM_PID
@@ -370,8 +433,15 @@ await_close() {
   return 0
 }
 
-print_close() {
-  [ -z "$ARM_TEXT" ] || printf '%s\n' "$ARM_TEXT"
+# Print the close read so far, then the given lines, in one write (header,
+# OUTPUT), so an owner reading a stream sees the whole exit at once.
+emit() {  # [line...]
+  local text=$ARM_TEXT line
+  for line in "$@"; do
+    [ -n "$line" ] || continue
+    text=${text:+$text$'\n'}$line
+  done
+  [ -z "$text" ] || printf '%s\n' "$text"
 }
 
 # Hand the close to main: stop the successor cycle (the state main's own turn
@@ -384,10 +454,8 @@ exit_to_main() {  # <why> [further lines]
     SUCCESSOR_OUT=
     "$SCRIPT_DIR/fm-watch-arm.sh" --stop >/dev/null 2>&1 || true
   fi
-  print_close
-  printf 'supervision-host: %s\n' "$1"
-  [ -z "${2:-}" ] || printf '%s\n' "$2"
   log_line "to-main	$1"
+  emit "supervision-host: $1" "${2:-}"
   exit 0
 }
 
@@ -414,9 +482,8 @@ turn_outcome_lines() {  # <turn>
 }
 
 stand_down() {  # <why>
-  print_close
-  printf 'supervision-host stood down: %s\n' "$1"
   log_line "stand-down	$1"
+  emit "supervision-host stood down: $1"
   exit 0
 }
 
@@ -648,7 +715,11 @@ activate || { echo "supervision-host stood down: the host record could not be wr
 log_line "start	gen=$GEN	primary=$PRIMARY"
 
 # The first cycle.
-start_arm "" || { echo "watcher: FAILED - the supervision host could not start a watcher cycle"; exit 1; }
+if [ "$FIRST_ARM_RESTART" -eq 1 ]; then
+  start_arm "$OWNER_PREDECESSOR" --restart
+else
+  start_arm "$OWNER_PREDECESSOR"
+fi || { echo "watcher: FAILED - the supervision host could not start a watcher cycle"; exit 1; }
 ARM_PID=$STARTED_ARM_PID
 ARM_OUT=$STARTED_ARM_OUT
 
@@ -663,18 +734,18 @@ while :; do
   # status above 128 tells the owner the host itself died.
   if [ -z "$REASON" ]; then
     log_line "pass-through	a close without a wake"
-    print_close
+    emit
     exit 0
   fi
   if [ -e "$STATE/.afk" ]; then
     log_line "pass-through	the away daemon's flag exists	$(printf '%s\n' "$REASON" | head -n 1)"
-    print_close
+    emit
     exit 0
   fi
   # Attended: every wake is main's, as without the host.
   if [ ! -f "$STATE/.afk-contract" ]; then
     log_line "pass-through	attended	$(printf '%s\n' "$REASON" | head -n 1)"
-    print_close
+    emit
     exit 0
   fi
   if ! host_still_owner; then

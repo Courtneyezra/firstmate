@@ -143,16 +143,17 @@ make_home() {  # <name> <attended|away> [config line]
 }
 
 # Run the host under the fake harness that holds the home's session lock.
-start_host() {  # <home>
+start_host() {  # <home> [park options...]
   local home=$1
+  shift
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       rm -f "$FM_HOME/host.rc"
-      "$0" park > "$FM_HOME/host.out" 2>&1
+      "$0" park "$@" > "$FM_HOME/host.out" 2>&1
       printf "%s\n" "$?" > "$FM_HOME/host.rc"
-    ' "$HOST" 2>> "$home/claude.err" &
+    ' "$HOST" "$@" 2>> "$home/claude.err" &
 }
 
 # Extended-regex twins of tests/lib.sh's fixed-string assert_grep pair.
@@ -301,7 +302,8 @@ test_away_wake_is_handled_on_the_engine_and_never_reaches_main() {
     fail "the host did not release the lease the engine left held: $(FM_HOME="$home" "$LEASE" check demo)"
   fi
   [ ! -s "$home/host.rc" ] || fail "a handled away wake reached main: $(cat "$home/host.out")"
-  [ ! -s "$home/host.out" ] || fail "a handled away wake printed to main: $(cat "$home/host.out")"
+  [ "$(grep -cv '^watcher: started pid=' "$home/host.out")" -eq 0 ] \
+    || fail "a handled away wake printed more than the first cycle's status to main: $(cat "$home/host.out")"
   watcher_live "$home" || fail "the host is not parked on a live successor cycle"
 
   echo handle > "$home/stub-mode"
@@ -558,6 +560,82 @@ test_park_seconds_at_or_beyond_the_hook_registration_fall_back_to_the_default() 
   pass "host: a park at or beyond the Stop-hook registration falls back to the default boundary"
 }
 
+# An owner whose own bound is the park lets a turn run past the boundary up to
+# its limit; a limit below the boundary or at the registration is the boundary.
+test_park_limit_lets_a_turn_outlive_the_boundary() {
+  local cases name limit want home
+  cases='limit-later:28000:handled limit-earlier:50:boundary limit-registration:28800:boundary limit-absent::boundary'
+  for c in $cases; do
+    name=${c%%:*}; limit=${c#*:}; want=${limit#*:}; limit=${limit%%:*}
+    home=$(make_home "$name" away)
+    FM_SUPERVISION_HOST_PARK_SECONDS=100 FM_SUPERVISION_HOST_PARK_LIMIT=$limit FM_SUPERVISION_HOST_TURN_TIMEOUT=200 \
+      FM_SUPERVISION_ENGINE_GRACE=10 start_host "$home"
+    wait_until 150 watcher_live "$home" || fail "$name: the host never started a watcher cycle"
+    append_status "$home" 'one close'
+    wait_until 250 sh -c '[ -s "$1/host.rc" ] || grep -q "	handled	" "$1/state/.supervision-host.log" 2>/dev/null' _ "$home" \
+      || fail "$name: the close was neither handled nor handed to main: $(cat "$home/state/.supervision-host.log")"
+    if host_exited "$home"; then
+      grep -q '^supervision-host: cycle boundary - ' "$home/host.out" || fail "$name: the host exited without the boundary: $(cat "$home/host.out")"
+      [ "$want" = boundary ] || fail "$name: a turn inside the owner's limit was refused at the boundary"
+    else
+      [ "$want" = handled ] || fail "$name: a turn past the boundary ran without a later limit"
+      kill -TERM "$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")"
+      wait_until 200 host_exited "$home" || fail "$name: the host did not stop on TERM"
+    fi
+  done
+  pass "host: an owner's later park limit lets a turn outlive the boundary, and no other limit does"
+}
+
+# The first cycle's status line reaches the owner before any close and only
+# once; --restart replaces a watcher it would otherwise attach to, and the
+# owner's predecessor arm makes the first cycle a handling successor.
+test_first_cycle_status_streams_and_owner_options_reach_it() {
+  local home stale fresh generation predecessor
+  home=$(make_home stream attended)
+  start_host "$home"
+  wait_until 150 grep -qs '^watcher: started pid=' "$home/host.out" \
+    || fail "stream: the first cycle's status did not reach the owner before a close: $(cat "$home/host.out")"
+  host_exited "$home" && fail "stream: the host exited before any close: $(cat "$home/host.out")"
+  append_status "$home" 'fixture finished' 'done'
+  wait_until 200 host_exited "$home" || fail "stream: the attended close did not reach main"
+  [ "$(grep -c '^watcher: ' "$home/host.out")" -eq 1 ] || fail "stream: the status line must be printed once: $(cat "$home/host.out")"
+  [ "$(sed -n '1p' "$home/host.out" | cut -c1-17)" = 'watcher: started ' ] || fail "stream: the status line must come first"
+  assert_re '^signal: .*demo.status' "$home/host.out" "stream: the close must follow the status line"
+
+  # A watcher a dead arm left behind, holding this home's watcher lock.
+  FM_HOME="$home" PATH="$home/fakebin:$PATH" perl -e 'setpgrp(0, 0); exec @ARGV' "$ROOT/bin/fm-watch-arm.sh" \
+    > "$home/stale-arm.out" 2>&1 &
+  wait_until 150 watcher_live "$home" || fail "stream: the fixture watcher never started"
+  kill -KILL "$!" 2>/dev/null || true
+  wait "$!" 2>/dev/null || true
+  stale=$(cat "$home/state/.watch.lock/pid")
+  rm -f "$home/host.out" "$home/host.rc"
+  start_host "$home" --restart
+  wait_until 150 grep -qs '^watcher: started pid=' "$home/host.out" || fail "stream: the restarting host never reported its cycle"
+  fresh=$(sed -n 's/^watcher: started pid=\([0-9]*\).*/\1/p' "$home/host.out")
+  [ "$fresh" != "$stale" ] || fail "stream: --restart attached to the watcher it should have replaced"
+  wait_until 100 sh -c '! kill -0 "$1" 2>/dev/null' _ "$stale" || fail "stream: --restart left the old watcher running"
+  wait_until 200 host_exited "$home" || append_status "$home" 'second close' 'done'
+  wait_until 200 host_exited "$home" || fail "stream: the restarting host's close did not reach main"
+
+  # That close left an unacknowledged downtime episode; a host the owner starts
+  # as the closed arm's successor takes it over as a handling successor
+  # instead of re-announcing it.
+  generation=$(sed -n 's/^[a-z]*:[a-z]*://p' "$home/state/.watcher-down")
+  [ -n "$generation" ] || fail "fixture: the close left no downtime episode: $(cat "$home/state/.watcher-down")"
+  predecessor=$(sed -n '1p' "$home/claude-pids")
+  rm -f "$home/host.out" "$home/host.rc"
+  FM_WATCH_PREDECESSOR_ARM_PID=$predecessor start_host "$home" --restart
+  wait_until 150 grep -qs '^watcher: started pid=' "$home/host.out" || fail "stream: the successor host never reported its cycle"
+  assert_re "^watcher: started pid=[0-9]+ \\(beacon fresh\\) recovery-generation=$generation\$" "$home/host.out" \
+    "the owner's predecessor must make the first cycle a handling successor of the pending generation"
+  sleep 3
+  host_exited "$home" && fail "a handling successor re-announced the pending episode: $(cat "$home/host.out")"
+  kill -TERM "$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")"
+  wait_until 200 host_exited "$home" || fail "stream: the successor host did not stop on TERM"
+  pass "host: the first cycle's status streams once, --restart replaces a stale watcher, and an owner predecessor makes a handling successor"
+}
+
 test_unverified_engine_hands_every_away_wake_to_main() {
   local home
   home=$(make_home no-engine away 'pi')
@@ -640,6 +718,8 @@ test_park_boundary_ends_the_park_before_the_hook_timeout
 test_park_boundary_holds_under_back_to_back_closes
 test_park_boundary_rechecked_just_before_the_engine_turn
 test_park_seconds_at_or_beyond_the_hook_registration_fall_back_to_the_default
+test_park_limit_lets_a_turn_outlive_the_boundary
+test_first_cycle_status_streams_and_owner_options_reach_it
 test_unverified_engine_hands_every_away_wake_to_main
 test_host_outside_the_lock_owner_stands_down
 test_superseded_host_leaves_the_owner_untouched

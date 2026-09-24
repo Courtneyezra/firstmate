@@ -95,8 +95,10 @@
 # the primary's harness pin, and this turn's report id, so every guarded
 # script applies the same partition, leases, and away relocation it applies to
 # the Pi branch. At activation the host stops anything a crashed predecessor
-# left running (recorded with identities, never by name) and releases the
-# branch actor's leases; it releases them again after every engine turn.
+# left running (recorded with identities, never by name), including the
+# engine descendants its turn recorded, removes that turn's files, and
+# releases the branch actor's leases; it releases them again after every
+# engine turn.
 #
 # STATE (all under state/, owned here): .supervision-host (this host's pid and
 # the processes it runs), .supervision-host-engine (the engine conversation:
@@ -293,7 +295,15 @@ activate() {
       [ "$role" = arm ] && stop_recorded "$pid" "$identity" 10
     done < "$HOST_RECORD"
   fi
-  rm -f "$STATE"/.supervision-host-arm.* "$TURN_FILE" 2>/dev/null || true
+  # A predecessor killed outright ran no cleanup: reap the engine descendants
+  # its turn recorded, then drop that turn's files.
+  local ledger
+  for ledger in "$STATE"/.supervision-host-descendants.*; do
+    case "$ledger" in *.pids|*.next) continue ;; esac
+    [ -f "$ledger" ] && _fm_engine_reap "$ledger"
+  done
+  rm -f "$STATE"/.supervision-host-arm.* "$STATE"/.supervision-host-descendants.* "$STATE"/.supervision-host-result.* \
+    "$STATE"/.supervision-host-errors.* "$STATE"/.supervision-host-readback.* "$TURN_FILE" 2>/dev/null || true
   printf 'host\t%s\t%s\n' "$HOST_PID" "$(identity_of "$HOST_PID")" > "$HOST_RECORD" || return 1
   release_branch_leases
 }

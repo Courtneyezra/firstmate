@@ -102,7 +102,9 @@ export FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999
 export FM_ARM_CONFIRM_TIMEOUT=30
 unset FM_SUPERVISION_ACTOR FM_BRANCH_REPORT_TURN FM_LEASE_HOLDER_PID PI_CODING_AGENT
 
-HOMES=()
+# Homes are registered in a file: make_home runs in a command substitution,
+# whose variables never reach this shell.
+HOMES_FILE="$TMP_ROOT/homes"
 # Stop whatever a case left running, by the exact pids its home recorded.
 stop_home_processes() {  # <home>
   local home=$1 pid
@@ -119,9 +121,9 @@ stop_home_processes() {  # <home>
 }
 suite_cleanup() {
   local home
-  for home in "${HOMES[@]:-}"; do
+  while IFS= read -r home; do
     [ -n "$home" ] && stop_home_processes "$home"
-  done
+  done < <(cat "$HOMES_FILE" 2>/dev/null)
   fm_test_cleanup
 }
 trap suite_cleanup EXIT
@@ -142,7 +144,7 @@ make_home() {  # <name> <attended|away> [config line]
     FM_HOME="$home" "$CONTRACT" enter --words 'watch the fleet; merge nothing' >/dev/null 2>&1 \
       || fail "fixture: could not record the away posture"
   fi
-  HOMES+=("$home")
+  printf '%s\n' "$home" >> "$HOMES_FILE"
   printf '%s\n' "$home"
 }
 
@@ -437,6 +439,35 @@ test_outcome_after_the_return_survives_a_host_killed_at_the_turn_end() {
   assert_contains "$drained" "supervision-host outcome 1 for demo [routine] was recorded after the captain returned" \
     "main's drain must present the outcome the killed host never handed off"
   pass "host: an outcome recorded after the return reaches main even when its host dies at the turn's end"
+}
+
+# A host killed outright mid-turn runs no cleanup; the next host's activation
+# stops the engine it left and removes that turn's files.
+test_next_host_clears_a_turn_its_killed_predecessor_left() {
+  local home host engine
+  home=$(make_home away-killed-mid-turn away)
+  echo return-first > "$home/stub-mode"
+  start_host "$home"
+  wait_until 150 watcher_live "$home" || fail "killed: the host never started a watcher cycle"
+  append_status "$home" 'mid-turn when its host is killed'
+  wait_until 250 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" || fail "killed: the turn never reported"
+  host=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
+  engine=$(cut -f1 "$home/state/.supervision-host.engine-pid")
+  kill -KILL "$host"
+  wait_until 100 host_exited "$home" || fail "killed: the host did not die"
+  ls "$home"/state/.supervision-host-result.* >/dev/null 2>&1 || fail "fixture: the killed turn left no result file, so this case proves nothing"
+  kill -0 "$engine" 2>/dev/null || fail "fixture: the engine died with its host, so this case proves nothing"
+
+  rm -f "$home/host.rc"
+  start_host "$home"
+  wait_until 250 host_exited "$home" || fail "killed: the next host did not resurface the queued outcome"
+  wait_until 100 sh -c '! kill -0 "$1" 2>/dev/null' _ "$engine" || fail "the next host left its killed predecessor's engine running"
+  for f in "$home"/state/.supervision-host-result.* "$home"/state/.supervision-host-errors.* \
+    "$home"/state/.supervision-host-descendants.* "$home/state/.supervision-host-turn"; do
+    [ -e "$f" ] && fail "the next host left its killed predecessor's turn file behind: $f"
+  done
+  assert_re '^check: rearm-resurface$' "$home/host.out" "the next host's first cycle must resurface the queue"
+  pass "host: the next host stops the engine a killed predecessor left mid-turn and removes that turn's files"
 }
 
 test_report_without_acknowledgement_hands_the_wake_to_main() {
@@ -788,6 +819,7 @@ test_away_wake_is_handled_on_the_engine_and_never_reaches_main
 test_away_turn_without_a_report_hands_the_wake_to_main
 test_return_during_an_engine_turn_hands_its_outcomes_to_main
 test_outcome_after_the_return_survives_a_host_killed_at_the_turn_end
+test_next_host_clears_a_turn_its_killed_predecessor_left
 test_report_without_acknowledgement_hands_the_wake_to_main
 test_return_during_a_failed_turn_still_hands_its_outcomes_to_main
 test_incomplete_engine_result_hands_the_wake_to_main

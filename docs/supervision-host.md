@@ -63,7 +63,7 @@ A turn that fails also starts the next wake on a fresh engine conversation.
 When the captain returned during a failed turn that recorded outcomes, the handback carries those outcomes too, for main to relay.
 When the host loses session-lock ownership or its auto-arm generation, it stands down silently and leaves continuity to whoever owns it now.
 A host that starts without that ownership stands down before activation, so it never stops the owner's host or watcher or releases its leases.
-A host that dies without a close is retried by its owner (Grok's model and Codex's checkpoint see it as a failed cycle and start the next one), and the next host stops, by recorded identity, whatever its predecessor left running before it arms.
+A host that dies without a close is retried by its owner (Grok's model and Codex's checkpoint see it as a failed cycle and start the next one), and the next host stops, by recorded identity, whatever its predecessor left running, including the engine descendants a killed turn recorded, and removes that turn's files before it arms.
 
 ## The park boundary
 

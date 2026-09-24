@@ -1060,7 +1060,6 @@ secondmate_liveness_tick() {
         triage_log "secondmate $id liveness: $FM_SM_LIVE_REASON"
         ;;
     esac
-    fm_secondmate_liveness_unlock "$id"
     if [ -n "$reason" ]; then
       queued=$(fm_wake_queued_keys check)
       if printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1 \
@@ -1070,6 +1069,7 @@ secondmate_liveness_tick() {
         err="check wake row could not be queued: $reason"
       fi
     fi
+    fm_secondmate_liveness_unlock "$id"
     if [ -n "$err" ]; then
       echo "watcher: secondmate $id liveness: $err" >&2
       triage_log "secondmate $id liveness error: $err" || true

@@ -32,7 +32,8 @@ Attended supervision on the host, `/quiet` on the host, and the daemon's retirem
   | Grok | the model's tracked background call, rendered as `bin/fm-supervision-host.sh park` at session start | the background task's completion notification |
   | Codex | the foreground checkpoint, `bin/fm-watch-checkpoint.sh`, in the watcher's place | the checkpoint's own output |
 
-  Every owner passes its harness as the primary pin, so work the engine dispatches runs on the primary's crew harness rather than the engine's.
+  Hook, plugin, extension, and checkpoint owners pass their harness as the primary pin; Grok's model-owned call relies on primary detection.
+  The host pins dispatched work to the primary's crew harness rather than the engine's.
   Grok's arm command is fixed when the session-start block renders, so adding or removing the file on a Grok home takes effect at the next session start; the other owners read the file at every arm.
 - The engine: `bin/fm-supervision-engine-lib.sh` owns the opt-in parse, the verified-engine list, and one bounded engine turn, including the reap of engine tool processes that outlive it.
 - Row eligibility: `bin/fm-branch-dispatch.mjs` is the command entry to `.pi/extensions/lib/fm-branch-dispatch.ts`, so the host and the Pi extension compute branch-claimable rows and their task scope from one owner; it also renders the wake message with the same away-posture tail.
@@ -77,7 +78,7 @@ It also starts no engine turn that could still be running at the boundary (the t
 One short main turn per boundary is the cost of never losing the park silently.
 
 Codex has no asynchronous wake, so its checkpoint's own bound is the park: the checkpoint passes it as the boundary and reports the boundary as its ordinary quiet line (`checkpoint: no actionable wake within <n>s`).
-Attended the bound stays `FM_CODEX_WATCH_CHECKPOINT` (180 seconds); while the away record exists it is raised to `FM_CODEX_WATCH_CHECKPOINT_AWAY` (default 3,600) so a parked main is not woken every few minutes.
+Attended the bound stays `FM_CODEX_WATCH_CHECKPOINT` (default 180 seconds); while the away record exists it is raised to `FM_CODEX_WATCH_CHECKPOINT_AWAY` (default 3,600) if longer, then capped at 27,000 seconds so a parked main is not woken every few minutes.
 Because that bound is not a harness timeout, the checkpoint also sets `FM_SUPERVISION_HOST_PARK_LIMIT`, which lets an engine turn that starts before the boundary finish after it; a captain message typed during the park waits for the checkpoint to return, at most the bound plus one engine turn, unless the captain interrupts it.
 
 ## Engine conversations

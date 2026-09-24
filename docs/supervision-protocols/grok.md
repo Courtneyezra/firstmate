@@ -35,5 +35,5 @@ The primary project Stop hook runs `bin/fm-turnend-guard-grok.sh` as a backstop,
 [`turnend-guard.md`](../turnend-guard.md) owns its running-payload capability selection between native same-process blocking and the pre-native bounded resume fallback.
 After any forced continuation, arm the watcher with the background protocol above.
 
-Interactive TUI primary sessions are the supported supervision host.
+Interactive TUI sessions are the supported Grok primary surface.
 Headless `grok -p` may wait for background process exit but does not reliably surface full auto-wake model output; do not run the primary firstmate as a one-shot headless process.

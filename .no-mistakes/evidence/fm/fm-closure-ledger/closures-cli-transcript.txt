@@ -1,0 +1,58 @@
+=== 1. Empty home (no dated close, no closure-origin) ===
+$ fm-fleet-snapshot.sh --closures 2026-09-24 2026-09-25
+2026-09-24 not recorded
+2026-09-25 not recorded
+[exit 0]
+
+=== 2. After 5 real tasks-axi closes today (done_keep=2 -> archive) ===
+--- data/backlog.md ---
+## In flight
+## Queued
+## Done
+- [x] e - item e (done 2026-09-25)
+- [x] d - item d (done 2026-09-25)
+--- data/done-archive.md ---
+
+## Archived 2026-09-25
+- [x] a - item a (done 2026-09-25)
+
+## Archived 2026-09-25
+- [x] b - item b https://github.com/o/r/pull/7 (merged 2026-09-25)
+
+## Archived 2026-09-25
+- [x] c - item c data/c/report.md (reported 2026-09-25)
+$ fm-fleet-snapshot.sh --closures 2026-09-24 2026-09-25 2026-09-26
+2026-09-24 not recorded
+2026-09-25 5
+2026-09-26 0
+[exit 0]
+
+=== 3. data/closure-origin overrides derived origin (declared 2026-09-26) ===
+2026-09-25 not recorded
+2026-09-26 0
+2026-09-27 0
+[exit 0]
+
+=== 4. Adversarial inputs ===
+$ closure-origin=garbage
+fm-fleet-snapshot: /tmp/fm-lab.5xhwaX/data/closure-origin must hold one YYYY-MM-DD line
+[exit 2]
+$ --closures 25/09/2026
+fm-fleet-snapshot: --closures date must be YYYY-MM-DD: 25/09/2026
+[exit 2]
+$ --closures (no dates)
+since date, and re-holding with --until remains the durable deferral.
+[exit 2]
+$ --closures 2026-09-25x
+fm-fleet-snapshot: --closures date must be YYYY-MM-DD: 2026-09-25x
+[exit 2]
+
+=== 5. Default --json mode unaffected ===
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-09-25T15:25:52Z",
+  "fm_home": "/tmp/fm-lab.5xhwaX",
+  "roots": {
+    "fm_root": "/home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CJNYVDHXKEKQT5S7SDB6ZN",
+    "state": "/tmp/fm-lab.5xhwaX/state",
+    "data": "/tmp/fm-lab.5xhwaX/data"

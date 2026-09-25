@@ -3816,6 +3816,14 @@ after=$(wc -l < "$TMP_ROOT/orphan-dead.ticks" | tr -d ' ')
   || fail "the reaped listener's descendant kept spawning processes ($before then $after)"
 pass "reaping the listener stops the process churn under it"
 
+orphan_pe "$HORPHAN" reconcile >/dev/null 2>&1 || true
+orphan_pe "$HORPHAN" retire orphan-src >/dev/null 2>&1 || true
+orphan_died=$(awk -F '\t' '$3 == "check" && index($4, "procevent:orphan-src:runner-died:") == 1' \
+  "$HORPHAN/state/.wake-queue" 2>/dev/null | grep -c . || true)
+[ "$orphan_died" = 0 ] \
+  || fail "the owner guard's own lease stop was later announced as a runner death"
+pass "a lease stop by the owner guard is not announced as a runner death"
+
 keep_owner_present
 kill -0 -"$KEEP_PID" 2>/dev/null \
   || fail "an identical listener in a home whose session is still there was reaped too"

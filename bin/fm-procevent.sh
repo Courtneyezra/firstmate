@@ -1512,6 +1512,7 @@ cmd_owner_watchdog() {  # <source-id> <runner-pid> <runner-identity> <ready-file
     misses=$((misses + 1))
     [ "$misses" -ge 2 ] || continue
     if stop_runner_pid "$pid" "$identity"; then
+      clear_runner_marker_guarded "$id" "$pid" || true
       exit 0
     fi
     # Identity/group inspection and signalling can fail transiently. Keep the
@@ -1675,6 +1676,18 @@ report_runner_death_guarded() {  # <source-id> <dead-runner-pid>
   local status=$?
   fm_procevent_source_lock_release "$1" 2>/dev/null || true
   return "$status"
+}
+
+clear_runner_marker_guarded() {  # <source-id> <stopped-runner-pid>
+  local marker recorded
+  fm_procevent_source_lock_try_acquire "$1" 2>/dev/null || return 1
+  marker=$(runner_file "$1")
+  if [ -f "$marker" ] && [ ! -L "$marker" ] \
+    && IFS= read -r recorded < "$marker" 2>/dev/null \
+    && [ "$recorded" = "$2" ]; then
+    rm -f -- "$marker"
+  fi
+  fm_procevent_source_lock_release "$1" 2>/dev/null || true
 }
 
 cmd_reconcile() {

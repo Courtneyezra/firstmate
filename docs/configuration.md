@@ -2022,6 +2022,7 @@ The runner marker is what already distinguishes that from an ordinary end of a r
 - The runner's own owner guard reads that marker when the pid it watches is gone and its group is empty, which is the soonest anything can know, and publishes one durable `check` wake naming the source.
 - `reconcile` reads the same marker as the backstop for a death the guard did not outlive, before it launches the replacement.
 - The marker is removed only once the wake lands, so exactly one reader announces each death, a failed announcement is retried by the next reader, and the orphan that would otherwise fail this home's `sweep-home` preflight is cleared with it.
+- A stop the owner guard makes on purpose, after its lease reads fail, is not a death: once that stop succeeds the guard removes the marker if it still names the stopped pid, taking the source lock without waiting, so a later `reconcile` does not announce the fleet's own lease backstop as a lost round.
 - Nothing about recovery changes: the source stays registered and the next `reconcile` starts a replacement.
 - A leaderless group is not reported this way, because it is the ambiguous crash shape the stranded wake below already announces with its own recovery.
 

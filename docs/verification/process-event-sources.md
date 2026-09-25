@@ -221,9 +221,9 @@ Refresh the regressions with `bash tests/fm-procevent.test.sh`; the dated measur
 
 ## Portability finding
 
-`setsid` is **not present on macOS**, so it cannot establish the runner's process group.
-Both direct `start` and `reconcile` use a Perl launcher that forks the runner, calls `setpgrp(0, 0)` in that child, marks the expected group leader, and then executes the private start path.
-The private path verifies that the runner PID is also its process-group id before it records a claim, so neither entry point can inherit and claim the caller's process group.
+The `setsid` utility is **not present on macOS**, so it cannot be used to detach the runner.
+Both direct `start` and `reconcile` instead use a Perl launcher that forks the runner, calls the `setsid(2)` syscall in that child so it leads a new session and process group outside the launching agent's session, marks the expected session leader, and then executes the private start path.
+The private path verifies that the runner PID is also its process-group id before it records a claim, so neither entry point can inherit and claim the caller's process group, and a session-level hangup of the launching agent cannot reach the runner.
 Without this launcher, reconcile would silently fail to start a runner on macOS and direct start could make retirement signal unrelated caller-group processes.
 
 ## Scope

@@ -3949,11 +3949,12 @@ for proof_state in absent zombie; do
     PROOF_RELEASE="$HPROOF/reap"
     FM_HOME="$HPROOF" FM_PROC_ROOT_OVERRIDE="$TMP_ROOT/no-proof-proc" \
       perl - "$PROOF_RELEASE" "$ROOT/bin/fm-procevent.sh" _start proof-src >"$HPROOF/start.log" 2>&1 <<'PL' &
+use POSIX ();
 my $release = shift @ARGV;
 defined(my $pid = fork) or exit 125;
 if ($pid == 0) {
-  setpgrp(0, 0) or exit 125;
-  $ENV{FM_PROCEVENT_RUNNER_GROUP} = $$;
+  POSIX::setsid() == $$ or exit 125;
+  $ENV{FM_PROCEVENT_RUNNER_SESSION} = $$;
   exec @ARGV;
   exit 125;
 }

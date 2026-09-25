@@ -26,6 +26,8 @@ So the allocator's stale detection and its exhaustion behavior are sound, and ne
 - `treehouse status --json` prints an array of `{name, path, status, flavor, lease_id, lease_holder, leased_at, processes}`, where `status` is one of `available`, `in-use`, or `leased`, and `processes` is an array of `{pid, name}` for the processes whose working directory is inside the slot.
   `path` is absolute and physical, which is what lets a caller match it against a resolved worktree.
   `bin/fm-wake-lib.sh`'s `fm_treehouse_slot_pids` and `fm_treehouse_pool_has_free_slot` read exactly those two fields, through `jq` (verified with `jq-1.8.1`).
+- The pool's size limit is the top-level `max_trees` of the repository's `treehouse.toml`, and `16` when that file is absent: `treehouse init` writes `max_trees = 16`, and with no `treehouse.toml` the seventeenth `treehouse get --lease` refused with `all 16 worktrees are in use or dirty (max_trees = 16)`.
+  `fm_treehouse_pool_at_limit` compares the slot count against it, because nothing `available` is not exhaustion on its own: the slot Treehouse just created reads `in-use` once the caller's shell is in it.
 - Occupancy is a working-directory scan, not a lease: `treehouse status --json` reported the stray `sleep` as `{"pid":88539,"name":"sleep"}` while `lease_id` stayed empty.
   A crewmate slot therefore carries no record of WHICH task owns it, which is why Firstmate keeps its own `.fm-slot-owner` claim beside the checkout.
 

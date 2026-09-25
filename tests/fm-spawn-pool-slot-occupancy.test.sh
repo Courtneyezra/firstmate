@@ -16,7 +16,7 @@
 #
 # The two exit codes are spelled literally here because they are the contract a
 # caller reads: 75 for an exhausted pool, which asking again cannot help, and 76
-# for a slot this home must not use, where asking again usually can.
+# for a slot this home must not use while the pool has another to give.
 set -u
 
 # shellcheck source=tests/fixtures.sh
@@ -53,6 +53,35 @@ fi
 exit 0
 SH
   chmod +x "$fakebin/treehouse"
+  # The endpoint's shell, made real: `treehouse get` typed into the pane starts
+  # a process whose working directory is the slot, as the real subshell's is,
+  # and closing the window ends it. Its pid is published so a test can ask
+  # whether anything this spawn started is still sitting in the slot.
+  mv "$fakebin/tmux" "$fakebin/tmux-stub"
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+set -u
+here=$(dirname "$0")
+case "${1:-}" in
+  send-keys)
+    case "$*" in
+      *"treehouse get"*)
+        if [ -n "${FM_FAKE_ENDPOINT_PID_FILE:-}" ]; then
+          (CDPATH='' cd -- "$FM_FAKE_PANE_PATH" && exec "$(command -pv sleep)" 300) >/dev/null 2>&1 &
+          printf '%s\n' "$!" > "$FM_FAKE_ENDPOINT_PID_FILE"
+        fi
+        ;;
+    esac
+    ;;
+  kill-window)
+    if [ -n "${FM_FAKE_ENDPOINT_PID_FILE:-}" ] && [ -s "$FM_FAKE_ENDPOINT_PID_FILE" ]; then
+      kill "$(cat "$FM_FAKE_ENDPOINT_PID_FILE")" 2>/dev/null || true
+    fi
+    ;;
+esac
+exec "$here/tmux-stub" "$@"
+SH
+  chmod +x "$fakebin/tmux"
   printf '%s\n' "$fakebin"
 }
 
@@ -91,17 +120,23 @@ $1
 REC
 }
 
-# write_pool_status <status> [pid...] publishes the pool scan the stub replays:
-# one slot, in the given state, holding the given pids.
+# write_pool_status [--spare] <status> [pid...] publishes the pool scan the stub
+# replays: one slot, in the given state, holding the given pids, plus a second
+# available slot when --spare is given, so a refused slot is not the only one.
 write_pool_status() {
-  local state=$1 procs='' pid
+  local spare='' state procs='' pid
+  if [ "${1:-}" = --spare ]; then
+    spare=",{\"name\":\"2\",\"path\":\"$CASE_DIR/pool/2/project\",\"status\":\"available\",\"processes\":[]}"
+    shift
+  fi
+  state=$1
   shift
   for pid in "$@"; do
     procs="$procs{\"pid\":$pid,\"name\":\"stray\"},"
   done
   procs=${procs%,}
   cat > "$CASE_DIR/pool-status.json" <<JSON
-[{"name":"1","path":"$SLOT_DIR","status":"$state","processes":[$procs]}]
+[{"name":"1","path":"$SLOT_DIR","status":"$state","processes":[$procs]}$spare]
 JSON
   export FM_FAKE_TREEHOUSE_STATUS="$CASE_DIR/pool-status.json"
 }
@@ -121,6 +156,13 @@ run_pool_spawn() {
   fm_test_run_spawn "$HOME_DIR" "$pane" "$FAKEBIN_DIR" "$id" "$PROJECT_DIR" --scout
 }
 
+# set_max_trees <n> commits a treehouse.toml limiting the project's pool.
+set_max_trees() {
+  printf 'max_trees = %s\nroot = ""\n' "$1" > "$PROJECT_DIR/treehouse.toml"
+  git -C "$PROJECT_DIR" add treehouse.toml
+  git -C "$PROJECT_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm 'pool limit'
+}
+
 # assert_not_launched <id> <what> proves the refusal stopped before the worker.
 assert_not_launched() {
   [ ! -e "$HOME_DIR/state/$1.meta" ] || fail "$2: the refused spawn still published task metadata"
@@ -133,7 +175,7 @@ test_slot_held_by_a_live_task_is_refused() {
   id=pool-occupied-live-a1
   rec=$(make_case occupied-live "$id")
   read_case_record "$rec"
-  write_pool_status available
+  write_pool_status --spare available
   : > "$OTHER_HOME/state/neighbour-task.meta"
   claim_slot neighbour-task "$OTHER_HOME"
 
@@ -177,7 +219,7 @@ test_claim_whose_home_is_absent_is_refused() {
   id=pool-absent-home-a3
   rec=$(make_case absent-home "$id")
   read_case_record "$rec"
-  write_pool_status available
+  write_pool_status --spare available
   claim_slot far-task "$CASE_DIR/home-that-is-not-here"
 
   out=$(run_pool_spawn "$id")
@@ -199,7 +241,7 @@ test_slot_holding_a_stray_process_is_refused() {
   read_case_record "$rec"
   # pid 1 is real and started long before this spawn asked for a slot, so the
   # age comparison runs against a genuine process rather than a fabricated one.
-  write_pool_status available 1
+  write_pool_status --spare available 1
 
   out=$(run_pool_spawn "$id")
   status=$?
@@ -217,7 +259,7 @@ test_slot_holding_an_unreadable_process_is_refused() {
   id=pool-unreadable-process-a5
   rec=$(make_case unreadable-process "$id")
   read_case_record "$rec"
-  write_pool_status available 2147483646
+  write_pool_status --spare available 2147483646
 
   out=$(run_pool_spawn "$id")
   status=$?
@@ -248,6 +290,88 @@ test_slot_holding_only_our_own_process_is_accepted() {
   pass "a slot holding only this spawn's own process is accepted"
 }
 
+# A refusal must not leave this spawn's own shell in the refused slot: that is a
+# live process parked in another task's working copy, the very occupancy the
+# refusal guards against, and it would make every later spawn read the slot as
+# occupied by somebody.
+test_refused_slot_keeps_no_process_of_ours() {
+  local rec id out status pid
+  id=pool-refused-no-process-b1
+  rec=$(make_case refused-no-process "$id")
+  read_case_record "$rec"
+  write_pool_status --spare available
+  : > "$OTHER_HOME/state/neighbour-task.meta"
+  claim_slot neighbour-task "$OTHER_HOME"
+  export FM_FAKE_ENDPOINT_PID_FILE="$CASE_DIR/endpoint.pid"
+
+  out=$(run_pool_spawn "$id")
+  status=$?
+  unset FM_FAKE_ENDPOINT_PID_FILE
+  expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
+    "a slot another live task holds must be refused as a bad slot"$'\n'"$out"
+  [ -s "$CASE_DIR/endpoint.pid" ] || fail "the endpoint's shell never entered the slot"
+  pid=$(cat "$CASE_DIR/endpoint.pid")
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    fail "the refused spawn left its shell (pid $pid) running in $SLOT_DIR"
+  fi
+  assert_contains "$out" "when it has none this is exhaustion" \
+    "the refusal still promised that asking again is always safe"
+  pass "a refused slot keeps no process of the refusing spawn in it"
+}
+
+# When the refused slot is the only one the pool can offer, asking again would
+# be handed that same slot, so the refusal is exhaustion rather than a bad slot.
+test_refused_only_slot_reports_exhaustion() {
+  local rec id out status
+  id=pool-refused-only-slot-b2
+  rec=$(make_case refused-only-slot "$id")
+  read_case_record "$rec"
+  write_pool_status in-use
+  : > "$OTHER_HOME/state/neighbour-task.meta"
+  claim_slot neighbour-task "$OTHER_HOME"
+
+  out=$(run_pool_spawn "$id")
+  status=$?
+  expect_code "$POOL_EXHAUSTED_EXIT" "$status" \
+    "a refused slot that was the pool's only one to offer is exhaustion"$'\n'"$out"
+  assert_contains "$out" "is exhausted" \
+    "the refusal did not say the pool was exhausted"
+  assert_contains "$out" "neighbour-task" \
+    "the refusal did not name the task that holds the only slot"
+  assert_not_launched "$id" "the pool's only slot"
+  pass "refusing the pool's only available slot reports exhaustion"
+}
+
+# Task ids are unique only within one home, and homes share one pool: another
+# home's live task with this very id still holds its slot.
+test_same_task_id_from_another_home_is_refused() {
+  local rec id out status
+  id=pool-same-id-b3
+  rec=$(make_case same-id-other-home "$id")
+  read_case_record "$rec"
+  write_pool_status --spare available
+  : > "$OTHER_HOME/state/$id.meta"
+  claim_slot "$id" "$OTHER_HOME"
+
+  out=$(run_pool_spawn "$id")
+  status=$?
+  expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
+    "another home's live task with the same id must not be read as this task"$'\n'"$out"
+  assert_contains "$out" "$OTHER_HOME" \
+    "the refusal did not name the claim's home"
+  assert_contains "$out" "$(CDPATH='' cd -- "$HOME_DIR" && pwd -P)" \
+    "the refusal did not name this home"
+  assert_not_launched "$id" "another home's slot"
+  assert_grep "home=$OTHER_HOME" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
+    "the refused spawn overwrote the other home's claim"
+  pass "a same-id claim from another home is refused rather than taken as this task's"
+}
+
 # An exhausted pool and a slot that never arrived used to be one refusal. They
 # need opposite responses, so the caller must be able to tell them apart.
 test_exhausted_pool_reports_exhaustion() {
@@ -255,6 +379,7 @@ test_exhausted_pool_reports_exhaustion() {
   id=pool-exhausted-a6
   rec=$(make_case exhausted "$id")
   read_case_record "$rec"
+  set_max_trees 1
   write_pool_status in-use
   fm_test_fake_sleep_noop "$FAKEBIN_DIR"
 
@@ -292,7 +417,32 @@ test_free_slot_deadline_is_not_reported_as_exhaustion() {
   pass "a pool with a free slot is not misreported as exhausted"
 }
 
+# Nothing available is not exhaustion on its own: where the pane's path never
+# follows `treehouse get`, the slot Treehouse just created reads in-use under
+# this spawn's own shell. Below max_trees the pool may still create slots.
+test_deadline_below_the_pool_limit_is_not_exhaustion() {
+  local rec id out status
+  id=pool-below-limit-b4
+  rec=$(make_case below-limit "$id")
+  read_case_record "$rec"
+  set_max_trees 10
+  write_pool_status in-use
+  fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+
+  out=$(run_pool_spawn "$id" "$PROJECT_DIR")
+  status=$?
+  expect_code 1 "$status" \
+    "a deadline reached below max_trees is not exhaustion"$'\n'"$out"
+  assert_not_contains "$out" "is exhausted" \
+    "a pool below its size limit was wrongly reported as exhausted"
+  assert_not_launched "$id" "a worktree that never arrived"
+  pass "a pool below its size limit is not misreported as exhausted"
+}
+
 test_slot_held_by_a_live_task_is_refused
+test_refused_slot_keeps_no_process_of_ours
+test_refused_only_slot_reports_exhaustion
+test_same_task_id_from_another_home_is_refused
 test_orphan_claim_is_replaced
 test_claim_whose_home_is_absent_is_refused
 test_slot_holding_a_stray_process_is_refused
@@ -300,5 +450,6 @@ test_slot_holding_an_unreadable_process_is_refused
 test_slot_holding_only_our_own_process_is_accepted
 test_exhausted_pool_reports_exhaustion
 test_free_slot_deadline_is_not_reported_as_exhaustion
+test_deadline_below_the_pool_limit_is_not_exhaustion
 
 echo "# all fm-spawn-pool-slot-occupancy tests passed"

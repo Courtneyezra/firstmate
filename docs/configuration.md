@@ -335,6 +335,39 @@ While the file exists, main's lease-checked commands also take the per-task leas
 The tracked `.tasks.toml` pins the default `tasks-axi` markdown backend to `data/backlog.md`, with `done_keep = 10` and an archive at `data/done-archive.md`.
 A home may instead select another tasks-axi adapter such as Beads through its own `.tasks.toml` or `TASKS_AXI_BACKEND`; firstmate still uses only tasks-axi verbs for routine backlog reads and mutations, and the adapter maps `start` and evidence-bearing `done` transitions to its native statuses and evidence fields.
 
+### Counting closures (data/closure-origin)
+
+Every closed row carries the date it closed, so a home's closure history is read from its existing records and needs no separate ledger.
+`tasks-axi` writes that date under one of three labels chosen by how the row was closed: `(done <date>)` with no artifact flag, `(merged <date>)` when closed with `--pr`, and `(reported <date>)` when closed with `--report`.
+The three labels are the same field, so all three count as closures; `(merged <date>)` is the close date under a PR-shaped label and is not the pull request's own merge date, which tasks-axi never learns.
+
+`done_keep` truncates the `## Done` section only.
+`tasks-axi prune` archives the overflow and never deletes it, and the close date is preserved through archiving, so closures per day are counted across the backlog and its archive together:
+
+```sh
+cat data/backlog.md data/done-archive.md \
+  | grep -oE '\((done|merged|reported) [0-9]{4}-[0-9]{2}-[0-9]{2}\)' \
+  | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | sort | uniq -c
+```
+
+Optional `data/closure-origin` holds one line naming the date from which that home's closure records are complete.
+It exists so a query for an earlier period is answered "not recorded" rather than `0`, because those two answers are indistinguishable in the records themselves.
+It is a declaration read by whoever runs the query, not an input to any script.
+Each home keeps its own; the file is local, gitignored, and never inherited by or propagated to a secondmate home, because every home has its own backlog.
+Do not record the origin inside `data/backlog.md`: a line added there is displaced as new closures are inserted and its position is not contracted, so it stops being a reliable declaration.
+
+Three limits apply to any count read this way, and the first is the reason `data/closure-origin` exists.
+
+- A day with no closures and a day that was never recorded both read as `0`.
+  Within the recorded window, treat a zero as a question rather than a fact and corroborate it, for example against neighbouring days and the archive's own `## Archived <date>` headers.
+- The close date is a local date with no time and no timezone, so only whole days can be counted, never a window between two instants.
+- The count is re-derived from the current rows on every read, so it is a snapshot and not an append-only audit trail.
+  `tasks-axi reopen` on a closed row erases its close date, and closing it again stamps the later day, so a task that genuinely closed and was later reopened leaves the history and the total falls.
+  No firstmate lifecycle path reopens an already-closed row, so this needs a direct `tasks-axi reopen` or a hand-edited row.
+
+A closure count also measures only what this home dispatched as backlog items.
+Work that lands as pull requests on a long-lived feature branch without its own rows does not appear in it, so a rate read off it is not a measure of that work's progress.
+
 ### Captain holds on Beads
 
 Captain-hold row creation is owned by [`bin/fm-captain-hold.sh`](../bin/fm-captain-hold.sh) `hold`: when no work item exists, it creates an ordinary backlog row (`--kind captain` metadata; Beads native type `task`) and then applies the captain hold.

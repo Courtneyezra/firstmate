@@ -239,6 +239,93 @@ test_wrapper_single_home() {
   pass "fm-tasks-axi.sh keeps the single-home layout addressing its own code-root backlog"
 }
 
+
+# A single home whose backlog archives after <keep> done rows, for the closure
+# counting contract docs/configuration.md "Counting closures" documents.
+make_counting_home() {  # <name> <keep>; prints the home directory
+  local dir="$TMP_ROOT/$1" keep=$2
+  mkdir -p "$dir/data"
+  cat > "$dir/.tasks.toml" <<EOF
+backend = "markdown"
+
+[markdown]
+path = "data/backlog.md"
+archive = "data/done-archive.md"
+done_keep = $keep
+EOF
+  empty_backlog "$dir/data/backlog.md"
+  printf '%s\n' "$dir"
+}
+
+# Close one row the way a lifecycle close does, through the wrapper.
+close_row() {  # <home> <id> [flag value]
+  local dir=$1 id=$2
+  shift 2
+  (cd "$dir" && FM_ROOT_OVERRIDE="$dir" "$WRAPPER" add "$id" "item $id" >/dev/null) \
+    || fail "add $id failed"
+  (cd "$dir" && FM_ROOT_OVERRIDE="$dir" "$WRAPPER" start "$id" >/dev/null) \
+    || fail "start $id failed"
+  (cd "$dir" && FM_ROOT_OVERRIDE="$dir" "$WRAPPER" 'done' "$id" "$@" >/dev/null) \
+    || fail "done $id failed"
+}
+
+# The documented counting one-liner, over both files.
+count_closures_on() {  # <home> <iso-date>
+  cat "$1/data/backlog.md" "$1/data/done-archive.md" 2>/dev/null \
+    | grep -cE "\\((done|merged|reported) $2\\)"
+}
+
+# Every close stamps a date, under the label the closing flag selects. The three
+# labels are one field, so a closure count must accept all three; a count that
+# reads only `(done ...)` silently drops PR-linked and report-linked closures.
+test_close_stamps_a_dated_label() {
+  local dir today
+  dir=$(make_counting_home close-labels 10)
+  today=$(date +%Y-%m-%d)
+  close_row "$dir" plain-1
+  close_row "$dir" pr-1 --pr https://github.com/o/r/pull/1
+  close_row "$dir" report-1 --report data/report-1/report.md
+  assert_grep "(done $today)" "$dir/data/backlog.md" \
+    "a plain close did not stamp (done <date>)"
+  assert_grep "(merged $today)" "$dir/data/backlog.md" \
+    "a --pr close did not stamp (merged <date>)"
+  assert_grep "(reported $today)" "$dir/data/backlog.md" \
+    "a --report close did not stamp (reported <date>)"
+  [ "$(count_closures_on "$dir" "$today")" = 3 ] \
+    || fail "the documented closure count did not see all three close labels"
+  pass "every close stamps a dated label the documented closure count reads"
+}
+
+# The claim the whole counting contract rests on: done_keep truncates the Done
+# SECTION, and the close date survives into the archive. If archiving ever drops
+# it, closure history silently collapses to the most recent done_keep rows.
+test_close_date_survives_archiving() {
+  local dir today archived
+  dir=$(make_counting_home close-archive 2)
+  today=$(date +%Y-%m-%d)
+  close_row "$dir" keep-a
+  close_row "$dir" keep-b
+  close_row "$dir" keep-c
+  close_row "$dir" keep-d
+  assert_present "$dir/data/done-archive.md" \
+    "closing past done_keep did not archive anything"
+  # The oldest rows left the Done section entirely.
+  assert_no_grep "keep-a" "$dir/data/backlog.md" \
+    "done_keep did not truncate the Done section"
+  # ...and kept their close date on the way out.
+  assert_grep "keep-a" "$dir/data/done-archive.md" \
+    "the truncated row did not reach the archive"
+  assert_grep "(done $today)" "$dir/data/done-archive.md" \
+    "archiving dropped the close date, so closure history cannot be counted"
+  archived=$(grep -cE "^- \\[x\\].*\\(done $today\\)" "$dir/data/done-archive.md")
+  [ "$archived" -ge 1 ] \
+    || fail "no dated closed row in the archive"
+  # Every closure is still counted across both files, none lost to truncation.
+  [ "$(count_closures_on "$dir" "$today")" = 4 ] \
+    || fail "closures were lost across the truncation boundary: got $(count_closures_on "$dir" "$today") of 4"
+  pass "the close date survives archiving so closures stay countable past done_keep"
+}
+
 test_guard_reports_regular_code_root_backlog
 test_guard_reports_foreign_link_and_archive
 test_guard_silent_for_single_home
@@ -249,6 +336,8 @@ if [ "$HAVE_TASKS_AXI" = 1 ]; then
   test_wrapper_refusals
   test_wrapper_refuses_add_start
   test_wrapper_single_home
+  test_close_stamps_a_dated_label
+  test_close_date_survives_archiving
 else
   echo "skip: tasks-axi not found; home-addressing cases not run"
 fi

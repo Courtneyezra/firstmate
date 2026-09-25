@@ -1,0 +1,109 @@
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+error: Task report link must be a data/<id>/report.md path
+code: VALIDATION_ERROR
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+help[1]:
+  - Run `tasks-axi list --state done` to see retained Done items
+## data/backlog.md
+# Backlog
+
+## In flight
+- [ ] item-c - item c (since 2026-09-25)
+## Queued
+## Done
+- [x] item-d - item d (done 2026-09-25)
+- [x] item-b - item b https://github.com/x/y/pull/7 (merged 2026-09-25)
+## data/done-archive.md
+
+## Archived 2026-09-25
+- [x] item-a - item a (done 2026-09-25)
+## Queries (derived origin = earliest close 2026-09-25)
+$ fm-fleet-snapshot.sh --closures 2026-09-24 2026-09-25 2026-09-26
+2026-09-24 not recorded
+2026-09-25 3
+2026-09-26 0
+[exit 0]
+## Declare later origin via data/closure-origin
+$ fm-fleet-snapshot.sh --closures 2026-09-25 2026-09-26
+2026-09-25 not recorded
+2026-09-26 0
+[exit 0]
+## Adversarial: malformed origin file
+$ fm-fleet-snapshot.sh --closures 2026-09-25
+fm-fleet-snapshot: /tmp/fm-lab.uikl5h/data/closure-origin must hold one YYYY-MM-DD line
+[exit 2]
+## Adversarial: malformed date / no dates
+$ fm-fleet-snapshot.sh --closures 25-09-2026
+fm-fleet-snapshot: --closures date must be YYYY-MM-DD: 25-09-2026
+[exit 2]
+$ fm-fleet-snapshot.sh --closures 
+usage: fm-fleet-snapshot.sh --json
+       fm-fleet-snapshot.sh --secondmate-home-summary
+       fm-fleet-snapshot.sh --closures <YYYY-MM-DD>...
+
+Print a structured snapshot of the firstmate fleet.
+JSON is the stable machine-readable output contract. The default snapshot
+refreshes only its parent-side remote-summary cache as an observational side effect.
+
+--contribution-input emits the canonical local backlog/tasks ownership pair only,
+without worker observations or cross-home collection.
+
+--closures prints "<date> <count>" per date, counting (done|merged|reported <date>)
+labels across data/backlog.md and data/done-archive.md, and "<date> not recorded"
+for a date before the closure origin. The origin is data/closure-origin when
+present, else the earliest dated close; with neither, every date is not recorded.
+
+--secondmate-home-summary emits the bounded structured summary used after a
+validated registered-home handoff. It is local-only, skips nested secondmate
+aggregation, includes generated_epoch for freshness arithmetic, and marks
+inventory contradictions or unavailable child state invalid.
+kind=secondmate meta records are not child inventory for unowned_current or
+terminal_in_flight; they never have backlog rows.
+Its invalidity object names the normalized failure kind and affected ids.
+Actionable tasks-axi captain holds appear as decisions_open and stay visible in
+queued with hold_reason, hold_kind, hold_until,
+hold_bucket, hold_age_days, and plural blocker fields for downstream
+projections. A captain hold is actionable only when every blocker is Done, any
+hold-until date has arrived, and an undated hold remains below the aging threshold.
+Cross-home collection uses FM_SNAPSHOT_SECONDMATES (default 20, 0 lifts the
+count bound) and FM_SNAPSHOT_SECONDMATE_MAX_BYTES.
+Every sampled remote home's state/home-summary.json is fetched concurrently
+under one FM_SNAPSHOT_BUDGET (default 5 seconds), with a valid prior copy under
+FM_SNAPSHOT_CACHE_DIR used when the live read fails, is invalid, or consumes the
+budget. Every ledger and cached copy must declare the current hold-classifier
+schema, even when it contains no captain holds; older summaries are rejected. A
+home with neither a valid current ledger nor a valid current cached copy is
+reported unreadable with the reason; collection never computes a summary in
+that home.
+Each local per-task current-state read is bounded by FM_SNAPSHOT_CREW_STATE_TIMEOUT
+(default 10 seconds); a read that hits the bound reports state unknown. Local task
+observations run concurrently, up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY (default 8).
+Remote secondmate endpoint liveness is not probed by this command.
+Terminal contradiction evidence uses
+FM_SNAPSHOT_TERMINAL_LINES, FM_SNAPSHOT_TERMINAL_BYTES, and
+FM_SNAPSHOT_TERMINAL_TIMEOUT and never becomes canonical current state.
+Parent activity evidence uses FM_SNAPSHOT_PARENT_ACTIVITY_LINES,
+FM_SNAPSHOT_PARENT_ACTIVITY_BYTES, FM_SNAPSHOT_PARENT_ACTIVITIES, and
+FM_SNAPSHOT_PARENT_ACTIVITY_TIMEOUT, with truncation disclosed in the result.
+The registered secondmate table uses FM_SNAPSHOT_REGISTRY_LINES,
+FM_SNAPSHOT_REGISTRY_BYTES, FM_SNAPSHOT_REGISTRY_RECORDS, and
+FM_SNAPSHOT_REGISTRY_TIMEOUT, with unavailability and truncation disclosed.
+Every captain hold carries hold_bucket, decided only from structured fields and
+never from hold reason or body prose: "blocked", "dated", "aged", or "live".
+An undated hold ages once its hold-set timestamp is at least
+FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS old (default 14; 0 ages every hold with a
+non-negative computed age); legacy holds without a stamp fall back to their
+since date, and re-holding with --until remains the durable deferral.
+[exit 2]
+## Default --json still works
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-09-25T13:15:56Z",
+  "fm_home": "/tmp/fm-lab.uikl5h",
+  "roots": {
+    "fm_root": "/home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CAD
+[exit 0]

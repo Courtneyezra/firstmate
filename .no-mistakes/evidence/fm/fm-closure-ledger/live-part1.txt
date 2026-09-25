@@ -1,0 +1,14 @@
+## Empty home (no backlog rows yet)
+$ /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CADXSG0BGB150776V4PSAE/bin/fm-fleet-snapshot.sh --closures 2026-09-25
+2026-09-25 not recorded
+[exit 0]
+## backlog after adds
+# Backlog
+
+## In flight
+## Queued
+- [ ] item-a - item a (since 2026-09-25)
+- [ ] item-b - item b (since 2026-09-25)
+- [ ] item-c - item c (since 2026-09-25)
+- [ ] item-d - item d (since 2026-09-25)
+## Done

@@ -1,0 +1,23 @@
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+  - Run `tasks-axi list --state done` to see retained Done items
+## data/backlog.md
+# Backlog
+
+## In flight
+## Queued
+## Done
+- [x] item-c - item c data/item-c/report.md (reported 2026-09-25)
+- [x] item-d - item d (done 2026-09-25)
+## data/done-archive.md
+
+## Archived 2026-09-25
+- [x] item-a - item a (done 2026-09-25)
+
+## Archived 2026-09-25
+- [x] item-b - item b https://github.com/x/y/pull/7 (merged 2026-09-25)
+## Four closures today, split across truncated Done and archive, under all three labels
+$ fm-fleet-snapshot.sh --closures 2026-09-24 2026-09-25 2026-09-26
+2026-09-24 not recorded
+2026-09-25 4
+2026-09-26 0
+[exit 0]

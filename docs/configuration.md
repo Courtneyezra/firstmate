@@ -338,25 +338,26 @@ A home may instead select another tasks-axi adapter such as Beads through its ow
 ### Counting closures (data/closure-origin)
 
 Every closed row carries the date it closed, so a home's closure history is read from its existing records and needs no separate ledger.
-`tasks-axi` writes that date under one of three labels chosen by how the row was closed: `(done <date>)` with no artifact flag, `(merged <date>)` when closed with `--pr`, and `(reported <date>)` when closed with `--report`.
+`tasks-axi` writes that date under one of three labels, chosen by the links on the row rather than by the closing flag: `(merged <date>)` when the row carries a pull request link, `(reported <date>)` when it carries a report path, and `(done <date>)` otherwise.
 The three labels are the same field, so all three count as closures; `(merged <date>)` is the close date under a PR-shaped label and is not the pull request's own merge date, which tasks-axi never learns.
 
 `done_keep` truncates the `## Done` section only.
 `tasks-axi prune` archives the overflow and never deletes it, and the close date is preserved through archiving, so closures per day are counted across the backlog and its archive together:
 
 ```sh
-cat data/backlog.md data/done-archive.md \
-  | grep -oE '\((done|merged|reported) [0-9]{4}-[0-9]{2}-[0-9]{2}\)' \
-  | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | sort | uniq -c
+bin/fm-fleet-snapshot.sh --closures 2026-09-24 2026-09-25
 ```
 
-Optional `data/closure-origin` holds one line naming the date from which that home's closure records are complete.
-It exists so a query for an earlier period is answered "not recorded" rather than `0`, because those two answers are indistinguishable in the records themselves.
-It is a declaration read by whoever runs the query, not an input to any script.
+It prints one `<date> <count>` line per date, counting every `(done|merged|reported <date>)` label in `data/backlog.md` and `data/done-archive.md`.
+A date before the home's closure origin prints `<date> not recorded` instead of a count, because a day before recording began and a day with no closures are indistinguishable in the records themselves.
+A date at or after the origin with no closures prints `0`.
+
+The origin is derived from the earliest dated close in the backlog and archive, so every home has one without any setup, and a home with no dated close at all answers "not recorded" for every date.
+Optional `data/closure-origin` overrides the derived origin with one `YYYY-MM-DD` line, for a home that knows its records are complete only from a later date than its oldest surviving row, for example after an archive was rotated away.
 Each home keeps its own; the file is local, gitignored, and never inherited by or propagated to a secondmate home, because every home has its own backlog.
 Do not record the origin inside `data/backlog.md`: a line added there is displaced as new closures are inserted and its position is not contracted, so it stops being a reliable declaration.
 
-Three limits apply to any count read this way, and the first is the reason `data/closure-origin` exists.
+Three limits apply to any count read this way, and the first is the reason the closure origin exists.
 
 - A day with no closures and a day that was never recorded both read as `0`.
   Within the recorded window, treat a zero as a question rather than a fact and corroborate it, for example against neighbouring days and the archive's own `## Archived <date>` headers.

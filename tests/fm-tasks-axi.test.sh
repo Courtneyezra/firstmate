@@ -269,13 +269,13 @@ close_row() {  # <home> <id> [flag value]
     || fail "done $id failed"
 }
 
-# The documented counting one-liner, over both files.
+# The documented closure query, over both files; prints its answer for one date.
 count_closures_on() {  # <home> <iso-date>
-  cat "$1/data/backlog.md" "$1/data/done-archive.md" 2>/dev/null \
-    | grep -cE "\\((done|merged|reported) $2\\)"
+  FM_ROOT_OVERRIDE="$1" "$ROOT/bin/fm-fleet-snapshot.sh" --closures "$2" \
+    | sed -n "s/^$2 //p"
 }
 
-# Every close stamps a date, under the label the closing flag selects. The three
+# Every close stamps a date, under the label the row's links select. The three
 # labels are one field, so a closure count must accept all three; a count that
 # reads only `(done ...)` silently drops PR-linked and report-linked closures.
 test_close_stamps_a_dated_label() {
@@ -326,6 +326,29 @@ test_close_date_survives_archiving() {
   pass "the close date survives archiving so closures stay countable past done_keep"
 }
 
+# A date before the closure origin must answer "not recorded", never a count
+# that reads as zero; a recorded date with no closures must still answer 0.
+test_closure_query_before_origin_is_not_recorded() {
+  local dir today
+  dir=$(make_counting_home close-origin 10)
+  today=$(date +%Y-%m-%d)
+  [ "$(count_closures_on "$dir" 2000-01-01)" = "not recorded" ] \
+    || fail "a home with no dated close answered a count instead of not recorded"
+  close_row "$dir" origin-1
+  [ "$(count_closures_on "$dir" 2000-01-01)" = "not recorded" ] \
+    || fail "a date before the derived origin answered a count instead of not recorded"
+  [ "$(count_closures_on "$dir" 2999-01-01)" = 0 ] \
+    || fail "a date after the origin with no closures did not answer 0"
+  [ "$(count_closures_on "$dir" "$today")" = 1 ] \
+    || fail "the origin day did not count its closure"
+  printf '2999-01-01\n' > "$dir/data/closure-origin"
+  [ "$(count_closures_on "$dir" "$today")" = "not recorded" ] \
+    || fail "data/closure-origin did not override the derived origin"
+  [ "$(count_closures_on "$dir" 2999-01-01)" = 0 ] \
+    || fail "the declared origin day with no closures did not answer 0"
+  pass "a closure query before the origin answers not recorded, not zero"
+}
+
 test_guard_reports_regular_code_root_backlog
 test_guard_reports_foreign_link_and_archive
 test_guard_silent_for_single_home
@@ -338,6 +361,7 @@ if [ "$HAVE_TASKS_AXI" = 1 ]; then
   test_wrapper_single_home
   test_close_stamps_a_dated_label
   test_close_date_survives_archiving
+  test_closure_query_before_origin_is_not_recorded
 else
   echo "skip: tasks-axi not found; home-addressing cases not run"
 fi

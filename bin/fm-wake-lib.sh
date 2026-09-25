@@ -1691,17 +1691,25 @@ fm_process_predates() {  # <pid> <epoch>
   [ "$((now - age))" -lt $((epoch - 2)) ]
 }
 
-# True when any slot of the pool serving <project-dir> holds a process started
-# since <epoch>: a caller's own allocation, which proves the pool gave it a slot
-# even when the caller never saw where. Returns 0 when one does, 1 when none
-# does, and 2 when the pool could not be read.
+# True when an UNCLAIMED slot of the pool serving <project-dir> holds a process
+# started since <epoch>: a caller's own allocation, which proves the pool gave
+# it a slot even when the caller never saw where. Only a slot with no
+# .fm-slot-owner claim counts, because every other Firstmate worker's slot is
+# claimed and its own tool calls are just as young. Returns 0 when one does, 1
+# when none does, and 2 when the pool could not be read.
 fm_treehouse_pool_holds_new_process() {  # <project-dir> <epoch>
-  local project=$1 epoch=$2 status pids pid
+  local project=$1 epoch=$2 status rows path pid
   status=$(fm_treehouse_pool_status "$project") || return 2
-  pids=$(printf '%s' "$status" | jq -r '.[]?.processes[]?.pid' 2>/dev/null) || return 2
-  for pid in $pids; do
+  rows=$(printf '%s' "$status" |
+    jq -r '.[]? | .path as $path | .processes[]? | "\($path)\t\(.pid)"' 2>/dev/null) || return 2
+  while IFS=$'\t' read -r path pid; do
+    [ -n "$pid" ] || continue
+    fm_treehouse_slot_owner_state "$path" ''
+    [ "$FM_TREEHOUSE_SLOT_OWNER" = absent ] || continue
     fm_process_predates "$pid" "$epoch" || return 0
-  done
+  done <<EOF
+$rows
+EOF
   return 1
 }
 

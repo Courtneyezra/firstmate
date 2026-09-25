@@ -488,6 +488,31 @@ test_deadline_with_our_own_new_slot_is_not_exhaustion() {
   pass "a pool at its limit only because of this spawn's own slot is not exhausted"
 }
 
+# At real exhaustion every slot belongs to a busy worker whose tool calls are
+# younger than this spawn too. A young process in a CLAIMED slot is another
+# worker's, so it must not hide an exhausted pool behind a generic refusal.
+test_deadline_with_another_workers_young_process_is_exhaustion() {
+  local rec id out status
+  id=pool-other-young-process-d1
+  rec=$(make_case other-young-process "$id")
+  read_case_record "$rec"
+  set_max_trees 1
+  fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+  : > "$OTHER_HOME/state/neighbour-task.meta"
+  claim_slot neighbour-task "$OTHER_HOME"
+  export FM_FAKE_TREEHOUSE_LIVE_PID_SLOT="$SLOT_DIR" FM_FAKE_TREEHOUSE_LIVE_PID_STATUS=in-use
+
+  out=$(run_pool_spawn "$id" "$PROJECT_DIR")
+  status=$?
+  unset FM_FAKE_TREEHOUSE_LIVE_PID_SLOT FM_FAKE_TREEHOUSE_LIVE_PID_STATUS
+  expect_code "$POOL_EXHAUSTED_EXIT" "$status" \
+    "a young process in another worker's claimed slot must not hide exhaustion"$'\n'"$out"
+  assert_contains "$out" "is exhausted" \
+    "the refusal did not say the pool was exhausted"
+  assert_not_launched "$id" "an exhausted pool"
+  pass "another worker's young process does not hide an exhausted pool"
+}
+
 test_slot_held_by_a_live_task_is_refused
 test_refused_slot_keeps_no_process_of_ours
 test_refused_only_slot_reports_exhaustion
@@ -502,5 +527,6 @@ test_exhausted_pool_reports_exhaustion
 test_free_slot_deadline_is_not_reported_as_exhaustion
 test_deadline_below_the_pool_limit_is_not_exhaustion
 test_deadline_with_our_own_new_slot_is_not_exhaustion
+test_deadline_with_another_workers_young_process_is_exhaustion
 
 echo "# all fm-spawn-pool-slot-occupancy tests passed"

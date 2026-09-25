@@ -359,7 +359,7 @@ Do not record the origin inside `data/backlog.md`: a line added there is displac
 
 Three limits apply to any count read this way, and the first is the reason the closure origin exists.
 
-- A day with no closures and a day that was never recorded both read as `0`.
+- In the records, a day with no closures and a day that was never recorded look the same, so the query separates them only at the origin and a recording gap after the origin still reads as `0`.
   Within the recorded window, treat a zero as a question rather than a fact and corroborate it, for example against neighbouring days and the archive's own `## Archived <date>` headers.
 - The close date is a local date with no time and no timezone, so only whole days can be counted, never a window between two instants.
 - The count is re-derived from the current rows on every read, so it is a snapshot and not an append-only audit trail.

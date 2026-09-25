@@ -4224,10 +4224,11 @@ spawn_refuse_slot() {  # <exit-code> <message>
 }
 
 # Refuse the slot the pool just allocated, reporting exhaustion when the pool
-# has no other slot available: asking again would be handed this same one.
+# has no other slot this task could be granted: asking again would be handed
+# this same one, or another that is refused just the same.
 spawn_refuse_allocated_slot() {  # <reason>
   local free=0
-  fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$WT" || free=$?
+  fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" "$WT" || free=$?
   if [ "$free" = 1 ]; then
     spawn_refuse_slot "$FM_POOL_EXHAUSTED_EXIT" "the Treehouse pool for '$PROJ_ABS' is exhausted: the only slot it could offer task $ID was $WT, but $1, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Inspect window $T"
   fi
@@ -4346,10 +4347,14 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     # Nothing available is not enough on its own: on hosts where the pane's
     # path never follows `treehouse get`, the slot Treehouse just created reads
     # in-use under this spawn's own shell, so only a pool at max_trees is one
-    # that may create no more.
+    # that may create no more - and not even that when a slot holds a process
+    # started since this spawn did, because that slot is this spawn's own.
     SPAWN_POOL_FREE=0
-    fm_treehouse_pool_has_free_slot "$PROJ_ABS" || SPAWN_POOL_FREE=$?
-    if [ "$SPAWN_POOL_FREE" = 1 ] && fm_treehouse_pool_at_limit "$PROJ_ABS"; then
+    fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" || SPAWN_POOL_FREE=$?
+    SPAWN_POOL_NEW_PROCESS=0
+    fm_treehouse_pool_holds_new_process "$PROJ_ABS" "$SPAWN_STARTED_EPOCH" || SPAWN_POOL_NEW_PROCESS=$?
+    if [ "$SPAWN_POOL_FREE" = 1 ] && [ "$SPAWN_POOL_NEW_PROCESS" = 1 ] &&
+      fm_treehouse_pool_at_limit "$PROJ_ABS"; then
       echo "error: the Treehouse pool for '$PROJ_ABS' is exhausted: every slot is in use or leased and the pool is at max_trees, so task $ID could not be given a working copy. Land or tear down work to return a slot, or raise max_trees in the project's treehouse.toml; retrying now cannot succeed. Inspect window $T" >&2
       exit "$FM_POOL_EXHAUSTED_EXIT"
     fi

@@ -1672,39 +1672,61 @@ fm_process_age_seconds() {  # <pid>
 # this very allocation started can never be misread as a foreign occupant;
 # anything genuinely left over is older than that by orders of magnitude.
 fm_treehouse_slot_foreign_pids() {  # <project-dir> <worktree> <epoch>
-  local project=$1 worktree=$2 epoch=$3 pids pid age now started
+  local project=$1 worktree=$2 epoch=$3 pids pid
   pids=$(fm_treehouse_slot_pids "$project" "$worktree") || return 1
-  now=$(date +%s) || return 1
   for pid in $pids; do
-    if ! age=$(fm_process_age_seconds "$pid"); then
-      printf '%s\n' "$pid"
-      continue
-    fi
-    started=$((now - age))
-    [ "$started" -lt $((epoch - 2)) ] || continue
+    fm_process_predates "$pid" "$epoch" || continue
     printf '%s\n' "$pid"
   done
   return 0
 }
 
-# True when the pool serving <project-dir> reports a slot available, other than
-# <except-worktree> when one is given: the slot a caller was just handed and
+# True when <pid> was already running <epoch> seconds into the epoch, with
+# fm_treehouse_slot_foreign_pids' two-second margin, or when its age cannot be
+# read at all: an unreadable process is never taken for the caller's own.
+fm_process_predates() {  # <pid> <epoch>
+  local pid=$1 epoch=$2 age now
+  age=$(fm_process_age_seconds "$pid") || return 0
+  now=$(date +%s) || return 0
+  [ "$((now - age))" -lt $((epoch - 2)) ]
+}
+
+# True when any slot of the pool serving <project-dir> holds a process started
+# since <epoch>: a caller's own allocation, which proves the pool gave it a slot
+# even when the caller never saw where. Returns 0 when one does, 1 when none
+# does, and 2 when the pool could not be read.
+fm_treehouse_pool_holds_new_process() {  # <project-dir> <epoch>
+  local project=$1 epoch=$2 status pids pid
+  status=$(fm_treehouse_pool_status "$project") || return 2
+  pids=$(printf '%s' "$status" | jq -r '.[]?.processes[]?.pid' 2>/dev/null) || return 2
+  for pid in $pids; do
+    fm_process_predates "$pid" "$epoch" || return 0
+  done
+  return 1
+}
+
+# True when the pool serving <project-dir> has a slot <task-id> of <home> could
+# be granted: reported available AND claimable by that task, since a slot
+# another live task holds is exactly what Treehouse reports as available.
+# <except-worktree>, when given, is the slot the caller was just handed and
 # refused, which the pool would hand straight back to anyone who asked again.
-# Returns 0 when such a slot is available, 1 when none is, and 2 when the pool
+# Returns 0 when such a slot exists, 1 when none does, and 2 when the pool
 # could not be read, which is not evidence either way.
-fm_treehouse_pool_has_free_slot() {  # <project-dir> [<except-worktree>]
-  local project=$1 except='' status free
-  if [ -n "${2:-}" ]; then
-    except=$(CDPATH='' cd -- "$2" 2>/dev/null && pwd -P) || except=$2
+fm_treehouse_pool_has_free_slot() {  # <project-dir> <task-id> <home> [<except-worktree>]
+  local project=$1 id=$2 home=$3 except='' status paths path
+  if [ -n "${4:-}" ]; then
+    except=$(CDPATH='' cd -- "$4" 2>/dev/null && pwd -P) || except=$4
   fi
   status=$(fm_treehouse_pool_status "$project") || return 2
-  free=$(printf '%s' "$status" |
-    jq -r --arg except "$except" '[.[]? | select(.status == "available" and .path != $except)] | length' 2>/dev/null) || return 2
-  case "$free" in
-    '' | *[!0-9]*) return 2 ;;
-  esac
-  [ "$free" -gt 0 ] || return 1
-  return 0
+  paths=$(printf '%s' "$status" |
+    jq -r --arg except "$except" '.[]? | select(.status == "available" and .path != $except) | .path' 2>/dev/null) || return 2
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    fm_treehouse_slot_claimable "$path" "$id" "$home" && return 0
+  done <<EOF
+$paths
+EOF
+  return 1
 }
 
 # True when the pool serving <project-dir> already holds as many slots as its

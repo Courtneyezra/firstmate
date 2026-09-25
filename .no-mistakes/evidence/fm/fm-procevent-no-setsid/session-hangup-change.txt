@@ -1,0 +1,24 @@
+== [change b34074c] code root: /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CAD70XZ156BVPV3P866G14  lab: /tmp/fm-lab.w2G3Z7
+-- agent pane transcript:
+bash-5.3$ bin/fm-procevent.sh register lavish hup-src -- /bin/sleep 900 && bin/f
+m-procevent.sh reconcile; echo DONE-$?
+registered: hup-src (lavish)
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+DONE-0
+bash-5.3$
+-- agent (pane shell) pid=2769688
+    PID    PPID    PGID     SID STAT COMMAND
+2769688 2769686 2769688 2769688 Ss+  bash --norc
+-- runner and its polling child / guard:
+    PID    PPID    PGID     SID STAT COMMAND
+2770840    1284 2770840 2770840 Ss   bash /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CAD70XZ156BVPV3P866G14/bin/fm-procevent.sh _start hup-src
+2771467    1284 2771467 2771467 Ss   bash /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CAD70XZ156BVPV3P866G14/bin/fm-procevent.sh _owner-watchdog hup-src 2770840 linux-starttime=79320288 cmdline-hex=62617368002f686f6d652f666c6565742d6d61782f2e6e6f2d6d697374616b65732f776f726b74726565732f6337616465393061313039632f30314d334341443730585a3135364256505633503836364731342f62696e2f666d2d70726f636576656e742e7368005f7374617274006875702d73726300 /tmp/fm-lab.w2G3Z7/state/procevent/.owner-guard-ready.OovqmW 42 5274655
+2771862 2770840 2770840 2770840 S    /bin/sleep 900
+runner pid=2770840 sid=2770840 ; launching agent sid=2769688
+RESULT: runner is in its OWN session
+-- session-wide hangup sweep while the launching agent is still alive: pkill -HUP -s 2769688
+RESULT: runner 2770840 SURVIVED the session hangup
+-- registry after the sweep:
+SOURCE                       ADAPTER      OWNER      PENDING
+hup-src                      lavish       live       0
+-- wake queue:

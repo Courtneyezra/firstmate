@@ -1,0 +1,32 @@
+== lab /tmp/fm-lab.Zk2iJM (owner check interval 2s)
+registered: guard-src (lavish)
+registered: backstop-src (lavish)
+reconciled: published=0 started=2 stopped=0 uncertain=0 failed=0
+-- listeners:
+SOURCE                       ADAPTER      OWNER      PENDING
+backstop-src                 lavish       live       0
+guard-src                    lavish       live       0
+
+### Scenario A: runner group killed by a signal while its owner guard is alive
+runner=2795042 guard=2795825 ; kill -HUP -- -2795042 (whole runner group)
+-- wake queue (/tmp/fm-lab.Zk2iJM/state/.wake-queue) keys:
+procevent:guard-src:runner-died:2795042-358217011	check:
+
+### Scenario B: runner AND its guard both killed (guard did not outlive it) -> reconcile backstop
+runner=2794812 guard=2795726 ; kill -KILL guard, then kill -HUP runner group
+-- keys before reconcile:
+procevent:guard-src:runner-died:2795042-358217011	check:
+reconciled: published=0 started=2 stopped=0 uncertain=0 failed=0
+-- keys after reconcile:
+procevent:guard-src:runner-died:2795042-358217011	check:
+procevent:backstop-src:runner-died:2794812-2247332188	check:
+-- one more reconcile (must not re-announce):
+reconciled: published=0 started=0 stopped=0 uncertain=0 failed=0
+2
+-- full queued text for the deaths:
+1790343211	1	check	procevent:guard-src:runner-died:2795042-358217011	check: process-event source guard-src had a runner that claimed it and then died inside its source command, so that round captured nothing and the source stopped collecting; its claim is released and reconcile starts a replacement on its next cycle. One death is one lost round, but a source that keeps dying is a source that is not collecting: check the source command and the adapter binary the registration names, check whether something is killing the runner (a home-wide or session-wide sweep reaches everything it started), and run an attached bin/fm-procevent.sh start guard-src to see any refusal on its stderr, which a detached launch discards.
+1790343218	2	check	procevent:backstop-src:runner-died:2794812-2247332188	check: process-event source backstop-src had a runner that claimed it and then died inside its source command, so that round captured nothing and the source stopped collecting; its claim is released and reconcile starts a replacement on its next cycle. One death is one lost round, but a source that keeps dying is a source that is not collecting: check the source command and the adapter binary the registration names, check whether something is killing the runner (a home-wide or session-wide sweep reaches everything it started), and run an attached bin/fm-procevent.sh start backstop-src to see any refusal on its stderr, which a detached launch discards.
+-- listeners after backstop (replacements running):
+SOURCE                       ADAPTER      OWNER      PENDING
+backstop-src                 lavish       live       0
+guard-src                    lavish       live       0

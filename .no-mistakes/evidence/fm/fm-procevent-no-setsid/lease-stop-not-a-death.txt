@@ -1,0 +1,42 @@
+##### run 1
+== lab /tmp/fm-lab.3dJtzj (owner lease 3s, check 1s)
+registered: lease-src (lavish)
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+runner=2834410 live; now the home goes idle (no owner activity) past the lease
+runner 2834410 stopped by its owner guard's lease backstop after ~4s
+-- runner marker files left in registry 2s after the stop:
+(end)
+-- owner returns: reconcile
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+-- runner-died wakes queued (expect 0):
+0
+SOURCE                       ADAPTER      OWNER      PENDING
+lease-src                    lavish       live       0
+##### run 2
+== lab /tmp/fm-lab.HH66uk (owner lease 3s, check 1s)
+registered: lease-src (lavish)
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+runner=2844551 live; now the home goes idle (no owner activity) past the lease
+runner 2844551 stopped by its owner guard's lease backstop after ~4s
+-- runner marker files left in registry 2s after the stop:
+(end)
+-- owner returns: reconcile
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+-- runner-died wakes queued (expect 0):
+0
+SOURCE                       ADAPTER      OWNER      PENDING
+lease-src                    lavish       live       0
+##### run 3
+== lab /tmp/fm-lab.ggmVYm (owner lease 3s, check 1s)
+registered: lease-src (lavish)
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+runner=2853401 live; now the home goes idle (no owner activity) past the lease
+runner 2853401 stopped by its owner guard's lease backstop after ~4s
+-- runner marker files left in registry 2s after the stop:
+(end)
+-- owner returns: reconcile
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+-- runner-died wakes queued (expect 0):
+0
+SOURCE                       ADAPTER      OWNER      PENDING
+lease-src                    lavish       live       0

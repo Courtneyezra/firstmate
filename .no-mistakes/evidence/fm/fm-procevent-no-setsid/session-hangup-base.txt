@@ -1,0 +1,24 @@
+== [base c643b57 (before fix)] code root: /tmp/fm-base.xFxZF6  lab: /tmp/fm-lab.mcAaVP
+-- agent pane transcript:
+bash-5.3$ bin/fm-procevent.sh register lavish hup-src -- /bin/sleep 900 && bin/f
+m-procevent.sh reconcile; echo DONE-$?
+registered: hup-src (lavish)
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+DONE-0
+bash-5.3$
+-- agent (pane shell) pid=2776377
+    PID    PPID    PGID     SID STAT COMMAND
+2776377 2776364 2776377 2776377 Ss+  bash --norc
+-- runner and its polling child / guard:
+    PID    PPID    PGID     SID STAT COMMAND
+2777849    1284 2777849 2776377 S    bash /tmp/fm-base.xFxZF6/bin/fm-procevent.sh _start hup-src
+2778490    1284 2778490 2776377 S    bash /tmp/fm-base.xFxZF6/bin/fm-procevent.sh _owner-watchdog hup-src 2777849 linux-starttime=79321568 cmdline-hex=62617368002f746d702f666d2d626173652e7846785a46362f62696e2f666d2d70726f636576656e742e7368005f7374617274006875702d73726300 /tmp/fm-lab.mcAaVP/state/procevent/.owner-guard-ready.br2g1q 42 5274692
+2778940 2777849 2777849 2776377 S    /bin/sleep 900
+runner pid=2777849 sid=2776377 ; launching agent sid=2776377
+RESULT: runner SHARES the launching agent's session
+-- session-wide hangup sweep while the launching agent is still alive: pkill -HUP -s 2776377
+RESULT: runner 2777849 was KILLED by the session hangup
+-- registry after the sweep:
+SOURCE                       ADAPTER      OWNER      PENDING
+hup-src                      lavish       none       0
+-- wake queue:

@@ -1,0 +1,3 @@
+$ FM_HOME=/tmp/fm-lab.Zk2iJM bin/fm-watch.sh   (one watcher run over the lab queue above)
+check: process-event source runner died: procevent:guard-src:runner-died:2795042-358217011 procevent:backstop-src:runner-died:2794812-2247332188
+[watcher exit 0]

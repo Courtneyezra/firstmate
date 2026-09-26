@@ -1,0 +1,31 @@
+===== C1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool offered task live-c1 the slot <FIX>/poolroot/.treehouse/liveproj-1f0a5e/1/liveproj, but task neighbour-task of <FIX>/other-home still holds it; refusing to put a second worker into a working copy that is not free. Treehouse offers this same slot again until its holder returns it, so retrying will not reach another slot; the answer is for that holder to land or tear down its work, not to retry. Window primary:fm-live-c1 is closed so its shell cannot stay in the slot
+EXIT=76
+===== C2
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool offered task live-c1 the slot <FIX>/poolroot/.treehouse/liveproj-1f0a5e/1/liveproj, but task neighbour-task of <FIX>/other-home still holds it; refusing to put a second worker into a working copy that is not free. Treehouse offers this same slot again until its holder returns it, so retrying will not reach another slot; the answer is for that holder to land or tear down its work, not to retry. Window primary:fm-live-c1 is closed so its shell cannot stay in the slot
+EXIT=76
+===== D1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: the only slot it could offer task live-d1 was <FIX>/poolroot/.treehouse/liveproj-1f0a5e/1/liveproj, but task neighbour-task of <FIX>/other-home still holds it, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window primary:fm-live-d1 is closed so its shell cannot stay in the slot
+EXIT=75
+===== F1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: every slot is in use or leased and the pool is at max_trees, so task live-f1 could not be given a working copy. Land or tear down work to return a slot, or raise max_trees in the project's treehouse.toml; retrying now cannot succeed. Window primary:fm-live-f1 is closed so its shell cannot stay in the pool
+EXIT=75
+===== G1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+spawned live-g1 harness=sleep kind=scout window=primary:fm-live-g1 worktree=<FIX>/poolroot/.treehouse/liveproj-1f0a5e/1/liveproj
+EXIT=0
+===== H1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+spawned live-h1 harness=sleep kind=scout window=primary:fm-live-h1 worktree=<FIX>/poolroot/.treehouse/liveproj-1f0a5e/2/liveproj
+EXIT=0

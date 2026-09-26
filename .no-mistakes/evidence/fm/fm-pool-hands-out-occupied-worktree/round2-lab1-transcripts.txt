@@ -1,0 +1,20 @@
+===== A1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: the only slot it could offer task live-a1 was <FIX>/poolroot/.treehouse/liveproj-6deacd/1/liveproj, but task neighbour-task of <FIX>/other-home still holds it, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window primary:fm-live-a1 is closed so its shell cannot stay in the slot
+EXIT=75
+===== A2
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: the only slot it could offer task live-a1 was <FIX>/poolroot/.treehouse/liveproj-6deacd/1/liveproj, but task neighbour-task of <FIX>/other-home still holds it, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window primary:fm-live-a1 is closed so its shell cannot stay in the slot
+EXIT=75
+===== A3
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: the only slot it could offer task live-a1 was <FIX>/poolroot/.treehouse/liveproj-6deacd/1/liveproj, but task neighbour-task of <FIX>/other-home still holds it, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window primary:fm-live-a1 is closed so its shell cannot stay in the slot
+EXIT=75
+===== B1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: treehouse get did not enter an isolated worktree within 60s (last seen '<FIX>/liveproj': it is the spawning project itself; spawning project '<FIX>/liveproj'); window primary:fm-live-b1 is closed so its shell cannot stay in the pool
+EXIT=1
+===== B2
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+spawned live-b1 harness=sleep kind=scout window=primary:fm-live-b1 worktree=<FIX>/poolroot/.treehouse/liveproj-6deacd/1/liveproj
+EXIT=0

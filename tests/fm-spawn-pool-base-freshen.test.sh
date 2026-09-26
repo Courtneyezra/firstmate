@@ -719,14 +719,15 @@ test_pool_slot_claim_follows_the_spawn_outcome() {
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
   out=$(run_spawn "$id" --scout)
   status=$?
-  # 76 is the bad-slot exit: this slot cannot be used, but asking the pool for
-  # another one is safe. tests/fm-spawn-pool-slot-occupancy.test.sh owns the
-  # rest of that gate, including the exhaustion code it must not be confused with.
-  expect_code 76 "$status" "spawn launched a worker on a slot it could not claim"$'\n'"$out"
+  # 75 is the exhaustion exit: this one-slot pool has no other slot to offer,
+  # so asking again would be handed this same unclaimable slot.
+  # tests/fm-spawn-pool-slot-occupancy.test.sh owns the rest of that gate,
+  # including the bad-slot code it must not be confused with.
+  expect_code 75 "$status" "spawn launched a worker on a slot it could not claim"$'\n'"$out"
   assert_contains "$out" "cannot be read as a claim" \
     "spawn did not name the unreadable claim as the reason"
-  assert_contains "$out" "not free" \
-    "spawn did not say it was refusing an unfree working copy"
+  assert_contains "$out" "is exhausted" \
+    "spawn did not report the one-slot pool as exhausted"
   [ -d "$SLOT_CLAIM" ] || fail "spawn replaced the directory blocking its slot claim"
   [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "spawn published a record for an unclaimable slot"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \

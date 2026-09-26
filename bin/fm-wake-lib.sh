@@ -1575,7 +1575,7 @@ FM_POOL_BAD_SLOT_EXIT=76
 # names this task id from another home names both homes, so a home that moved
 # reads as that rather than as a mystery.
 fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home>
-  local worktree=$1 id=$2 home=$3 owner_home owner_real home_real marker other=''
+  local worktree=$1 id=$2 home=$3 owner_home owner_real home_real marker home_note=''
   FM_TREEHOUSE_SLOT_BUSY=
   fm_treehouse_slot_owner_state "$worktree" "$id"
   marker=$(fm_treehouse_slot_owner_marker "$worktree" 2>/dev/null || true)
@@ -1589,14 +1589,14 @@ fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home>
   owner_home=$FM_TREEHOUSE_SLOT_OWNER_HOME
   home_real=$(CDPATH='' cd -- "$home" 2>/dev/null && pwd -P) || home_real=$home
   if [ "$FM_TREEHOUSE_SLOT_OWNER" = mine ]; then
-    other=" (the claim names this task id, but from ${owner_home:-no home}, not this home $home_real)"
+    home_note=" (the claim names this task id, but from ${owner_home:-no home}, not this home $home_real)"
   fi
   if [ -z "$owner_home" ]; then
-    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID holds it and ${marker:-its claim} names no home to check$other"
+    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID holds it and ${marker:-its claim} names no home to check$home_note"
     return 1
   fi
   if [ ! -d "$owner_home" ]; then
-    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID holds it and its home $owner_home is not here to prove the claim stale$other"
+    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID holds it and its home $owner_home is not here to prove the claim stale$home_note"
     return 1
   fi
   owner_real=$(CDPATH='' cd -- "$owner_home" 2>/dev/null && pwd -P) || owner_real=$owner_home
@@ -1606,7 +1606,7 @@ fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home>
   if [ -e "$owner_home/state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ] ||
     [ -L "$owner_home/state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ]; then
     # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
-    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home still holds it$other"
+    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home still holds it$home_note"
     return 1
   fi
   return 0

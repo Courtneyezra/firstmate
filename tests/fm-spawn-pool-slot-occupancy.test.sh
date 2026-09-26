@@ -191,7 +191,7 @@ assert_not_launched() {
 # task's records still hold, and nothing may put a second worker into it.
 test_slot_held_by_a_live_task_is_refused() {
   local rec id out status
-  id=pool-occupied-live-a1
+  id='pool-occupied-live-a1'
   rec=$(make_case occupied-live "$id")
   read_case_record "$rec"
   write_pool_status --spare available
@@ -216,7 +216,7 @@ test_slot_held_by_a_live_task_is_refused() {
 # for the task it names, which is what a spawn that aborted after claiming left.
 test_orphan_claim_is_replaced() {
   local rec id out status
-  id=pool-orphan-claim-a2
+  id='pool-orphan-claim-a2'
   rec=$(make_case orphan-claim "$id")
   read_case_record "$rec"
   write_pool_status available
@@ -235,7 +235,7 @@ test_orphan_claim_is_replaced() {
 # here cannot prove its claim stale, so the slot stays refused.
 test_claim_whose_home_is_absent_is_refused() {
   local rec id out status
-  id=pool-absent-home-a3
+  id='pool-absent-home-a3'
   rec=$(make_case absent-home "$id")
   read_case_record "$rec"
   write_pool_status --spare available
@@ -255,7 +255,7 @@ test_claim_whose_home_is_absent_is_refused() {
 # in the slot when the allocation went out was there before the slot was ours.
 test_slot_holding_a_stray_process_is_refused() {
   local rec id out status
-  id=pool-stray-process-a4
+  id='pool-stray-process-a4'
   rec=$(make_case stray-process "$id")
   read_case_record "$rec"
   # pid 1 is real and started long before this spawn asked for a slot, so the
@@ -275,7 +275,7 @@ test_slot_holding_a_stray_process_is_refused() {
 # An occupant whose age cannot be read is not an absent occupant.
 test_slot_holding_an_unreadable_process_is_refused() {
   local rec id out status
-  id=pool-unreadable-process-a5
+  id='pool-unreadable-process-a5'
   rec=$(make_case unreadable-process "$id")
   read_case_record "$rec"
   write_pool_status --spare available 2147483646
@@ -294,7 +294,7 @@ test_slot_holding_an_unreadable_process_is_refused() {
 # spawn's own start must never be read as somebody else's occupant.
 test_slot_holding_only_our_own_process_is_accepted() {
   local rec id out status
-  id=pool-own-process-a8
+  id='pool-own-process-a8'
   rec=$(make_case own-process "$id")
   read_case_record "$rec"
   export FM_FAKE_TREEHOUSE_LIVE_PID_SLOT="$SLOT_DIR"
@@ -315,7 +315,7 @@ test_slot_holding_only_our_own_process_is_accepted() {
 # occupied by somebody.
 test_refused_slot_keeps_no_process_of_ours() {
   local rec id out status pid
-  id=pool-refused-no-process-b1
+  id='pool-refused-no-process-b1'
   rec=$(make_case refused-no-process "$id")
   read_case_record "$rec"
   write_pool_status --spare available
@@ -340,7 +340,7 @@ test_refused_slot_keeps_no_process_of_ours() {
 # be handed that same slot, so the refusal is exhaustion rather than a bad slot.
 test_refused_only_slot_reports_exhaustion() {
   local rec id out status
-  id=pool-refused-only-slot-b2
+  id='pool-refused-only-slot-b2'
   rec=$(make_case refused-only-slot "$id")
   read_case_record "$rec"
   write_pool_status in-use
@@ -365,7 +365,7 @@ test_refused_only_slot_reports_exhaustion() {
 # just refused, so it must not turn exhaustion into "ask for another slot".
 test_refusal_with_only_held_slots_left_reports_exhaustion() {
   local rec id out status
-  id=pool-only-held-left-c1
+  id='pool-only-held-left-c1'
   rec=$(make_case only-held-left "$id")
   read_case_record "$rec"
   write_pool_status --spare available
@@ -388,7 +388,7 @@ test_refusal_with_only_held_slots_left_reports_exhaustion() {
 # home's live task with this very id still holds its slot.
 test_same_task_id_from_another_home_is_refused() {
   local rec id out status
-  id=pool-same-id-b3
+  id='pool-same-id-b3'
   rec=$(make_case same-id-other-home "$id")
   read_case_record "$rec"
   write_pool_status --spare available
@@ -413,7 +413,7 @@ test_same_task_id_from_another_home_is_refused() {
 # need opposite responses, so the caller must be able to tell them apart.
 test_exhausted_pool_reports_exhaustion() {
   local rec id out status
-  id=pool-exhausted-a6
+  id='pool-exhausted-a6'
   rec=$(make_case exhausted "$id")
   read_case_record "$rec"
   set_max_trees 1
@@ -436,7 +436,7 @@ test_exhausted_pool_reports_exhaustion() {
 # the generic refusal and its ordinary exit code.
 test_free_slot_deadline_is_not_reported_as_exhaustion() {
   local rec id out status
-  id=pool-not-exhausted-a7
+  id='pool-not-exhausted-a7'
   rec=$(make_case not-exhausted "$id")
   read_case_record "$rec"
   write_pool_status available
@@ -459,7 +459,7 @@ test_free_slot_deadline_is_not_reported_as_exhaustion() {
 # this spawn's own shell. Below max_trees the pool may still create slots.
 test_deadline_below_the_pool_limit_is_not_exhaustion() {
   local rec id out status
-  id=pool-below-limit-b4
+  id='pool-below-limit-b4'
   rec=$(make_case below-limit "$id")
   read_case_record "$rec"
   set_max_trees 10
@@ -481,7 +481,7 @@ test_deadline_below_the_pool_limit_is_not_exhaustion() {
 # pane's path never showed where, which is not exhaustion.
 test_deadline_with_our_own_new_slot_is_not_exhaustion() {
   local rec id out status
-  id=pool-own-new-slot-c2
+  id='pool-own-new-slot-c2'
   rec=$(make_case own-new-slot "$id")
   read_case_record "$rec"
   set_max_trees 1
@@ -504,7 +504,7 @@ test_deadline_with_our_own_new_slot_is_not_exhaustion() {
 # worker's, so it must not hide an exhausted pool behind a generic refusal.
 test_deadline_with_another_workers_young_process_is_exhaustion() {
   local rec id out status
-  id=pool-other-young-process-d1
+  id='pool-other-young-process-d1'
   rec=$(make_case other-young-process "$id")
   read_case_record "$rec"
   set_max_trees 1
@@ -529,7 +529,7 @@ test_deadline_with_another_workers_young_process_is_exhaustion() {
 # may leave it there: exhaustion or not, the endpoint is closed.
 test_deadline_exits_close_the_endpoint() {
   local rec id out status
-  id=pool-deadline-exhausted-e1
+  id='pool-deadline-exhausted-e1'
   rec=$(make_case deadline-exhausted-closed "$id")
   read_case_record "$rec"
   set_max_trees 1
@@ -543,7 +543,7 @@ test_deadline_exits_close_the_endpoint() {
     "the exhausted deadline case must still report exhaustion"$'\n'"$out"
   assert_endpoint_closed "the exhausted deadline exit"
 
-  id=pool-deadline-generic-e2
+  id='pool-deadline-generic-e2'
   rec=$(make_case deadline-generic-closed "$id")
   read_case_record "$rec"
   write_pool_status available

@@ -176,8 +176,9 @@
 #   is exhausted - it is at max_trees with nothing available, or the slot refused
 #   was the only one it had to offer and asking again would be handed it straight
 #   back - so work must be landed and retrying cannot help; 76 means this slot
-#   must not be used while another may be, so asking again can succeed when the
-#   pool has one to give. Every other refusal keeps exit 1.
+#   must not be used while another may be. Treehouse offers the same slot again
+#   until its holder returns it, so a 76 is not a cue to retry either: its holder
+#   must land or tear down its work. Every other refusal keeps exit 1.
 #   The local root is whatever bin/fm-wake-lib.sh's
 #   fm_firstmate_root_home resolves, so a home seeded from another machine anchors
 #   that lock itself rather than failing to resolve one;
@@ -4230,9 +4231,9 @@ spawn_refuse_allocated_slot() {  # <reason>
   local free=0
   fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" "$WT" || free=$?
   if [ "$free" = 1 ]; then
-    spawn_refuse_slot "$FM_POOL_EXHAUSTED_EXIT" "the Treehouse pool for '$PROJ_ABS' is exhausted: the only slot it could offer task $ID was $WT, but $1, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Inspect window $T"
+    spawn_refuse_slot "$FM_POOL_EXHAUSTED_EXIT" "the Treehouse pool for '$PROJ_ABS' is exhausted: the only slot it could offer task $ID was $WT, but $1, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window $T is closed so its shell cannot stay in the slot"
   fi
-  spawn_refuse_slot "$FM_POOL_BAD_SLOT_EXIT" "the Treehouse pool offered task $ID the slot $WT, but $1; refusing to put a second worker into a working copy that is not free. Asking for another slot is safe when the pool has one; when it has none this is exhaustion, and the answer is to land or tear down work, not to retry. Inspect window $T"
+  spawn_refuse_slot "$FM_POOL_BAD_SLOT_EXIT" "the Treehouse pool offered task $ID the slot $WT, but $1; refusing to put a second worker into a working copy that is not free. Treehouse offers this same slot again until its holder returns it, so retrying will not reach another slot; the answer is for that holder to land or tear down its work, not to retry. Window $T is closed so its shell cannot stay in the slot"
 }
 
 if [ "$RELAUNCH" -eq 1 ] && [ "$KIND" != secondmate ] &&

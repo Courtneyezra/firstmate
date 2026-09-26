@@ -329,8 +329,10 @@ test_refused_slot_keeps_no_process_of_ours() {
   expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
     "a slot another live task holds must be refused as a bad slot"$'\n'"$out"
   assert_endpoint_closed "the refused spawn"
-  assert_contains "$out" "when it has none this is exhaustion" \
-    "the refusal still promised that asking again is always safe"
+  assert_contains "$out" "retrying will not reach another slot" \
+    "the refusal still told the caller a retry could reach another slot, though Treehouse offers this one again"
+  assert_contains "$out" "is closed so its shell cannot stay in the slot" \
+    "the refusal pointed the caller at a window it had already closed"
   pass "a refused slot keeps no process of the refusing spawn in it"
 }
 
@@ -353,6 +355,8 @@ test_refused_only_slot_reports_exhaustion() {
     "the refusal did not say the pool was exhausted"
   assert_contains "$out" "neighbour-task" \
     "the refusal did not name the task that holds the only slot"
+  assert_contains "$out" "is closed so its shell cannot stay in the slot" \
+    "the refusal pointed the caller at a window it had already closed"
   assert_not_launched "$id" "the pool's only slot"
   pass "refusing the pool's only available slot reports exhaustion"
 }

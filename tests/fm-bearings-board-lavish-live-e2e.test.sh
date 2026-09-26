@@ -48,6 +48,7 @@ LAB_PORT=''
 PORT_LAB=''
 PORT_PINNED=''
 cleanup() {
+  fm_test_reap_procevent_homes
   [ -z "$LAB" ] || {
     # End the session first so the board's own armed listener returns and exits,
     # then stop the isolated server this guard started.
@@ -91,6 +92,7 @@ LAB=$(cd -P -- "$LAB" && pwd -P)
 mkdir -p "$LAB/state" "$LAB/data" "$LAB/lavish-state"
 LAB_PORT=$(free_port) || fail "could not find a free port for the guard server"
 export LAVISH_AXI_STATE_DIR="$LAB/lavish-state" LAVISH_AXI_PORT="$LAB_PORT"
+fm_test_track_procevent_home "$LAB" "$LAB/procevent-claims"
 
 cat > "$LAB/payload.json" <<'JSON'
 {
@@ -173,6 +175,7 @@ PORT_PINNED=$(free_port) || fail "could not find a free port for the Lavish port
 PORT_LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-bearings-lavish-port.XXXXXX") || fail "cannot create the port guard lab"
 PORT_LAB=$(cd -P -- "$PORT_LAB" && pwd -P)
 mkdir -p "$PORT_LAB/state" "$PORT_LAB/data" "$PORT_LAB/config" "$PORT_LAB/lavish-state"
+fm_test_track_procevent_home "$PORT_LAB" "$PORT_LAB/procevent-claims"
 printf '%s\n' "$PORT_PINNED" > "$PORT_LAB/config/lavish-port"
 cp "$LAB/payload.json" "$PORT_LAB/payload.json"
 

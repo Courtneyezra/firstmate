@@ -3604,12 +3604,25 @@ fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep>
   if [ "$proof" = 1 ]; then
     if ! content=$(fm_backend_herdr_composer_content "$target" "$proof_lines") \
       || ! fm_backend_herdr_composer_payload_shown "$text" "$content"; then
-      if fm_backend_herdr_composer_clear "$target" "$text"; then
-        printf 'send-failed'
-      else
-        printf 'unknown'
+      # FORK DIVERGENCE (deliberate, 2026-09-26; see docs/fork-divergences.md).
+      # Upstream refuses every unproven payload here. This fork refuses only
+      # when the composer actually shows SOMETHING other than the payload,
+      # which is the truncation and foreign-text hazard the proof exists for.
+      # A composer that reads back EMPTY after the literal send has nothing to
+      # concatenate onto and nothing to truncate, so the submit proceeds: that
+      # is the case of a pane whose agent reports identity claude while
+      # exposing no readable composer, and refusing it makes `exit` unable to
+      # stop such an agent at all. Anyone merging upstream again will meet this
+      # and should keep the empty-composer carve-out rather than restore the
+      # blanket refusal.
+      if [ -n "${content//[$' \t\r\n\v\f']/}" ]; then
+        if fm_backend_herdr_composer_clear "$target" "$text"; then
+          printf 'send-failed'
+        else
+          printf 'unknown'
+        fi
+        return 0
       fi
-      return 0
     fi
   fi
   raw_status=$(fm_backend_herdr_agent_status_raw "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE")

@@ -381,6 +381,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/fork-divergences.md",
+      "audience": "maintainer-architecture"
+    },
+    {
       "path": "docs/herdr-backend.md",
       "audience": "operator-current"
     },

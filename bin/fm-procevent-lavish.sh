@@ -88,8 +88,17 @@
 # session store (LAVISH_AXI_STATE_DIR/state.json, default ~/.lavish-axi/state.json)
 # and use its host and port. Opening the board writes that URL; polling does not.
 # This is a routing lookup before the blocking call, not presence polling or a
-# second route record. Ambient/configured addresses must not retarget a reply.
-# An unreadable or missing session stops before the staged reply is consumed.
+# second route record. A resolved session's address wins over an ambient or
+# configured one, so it cannot be retargeted while the board is live.
+#
+# FORK DIVERGENCE (deliberate, 2026-09-26; see docs/fork-divergences.md).
+# Upstream stops here when the session is missing or unreadable. This fork does
+# NOT: it falls back to the port the registration carries, because a registered
+# listener must keep working with no home and no saved session - which is the
+# state the watcher relaunches one into, and what `--port` exists to guarantee.
+# So the session refines the route when it is readable, and the registered port
+# is the route when it is not. Anyone merging upstream again will meet this and
+# should keep the fallback rather than restore the stop.
 #
 # `answers` is this adapter's half of the generic keyed-answer contract in
 # bin/fm-procevent.sh. It reports what the captain actually chose, as
@@ -194,8 +203,8 @@ apply_session_host() {  # <artifact>
     $host ne "0.0.0.0" && $host ne "::" && $port >= 1 && $port <= 65535
       or die "invalid saved Lavish server address\n";
     print "$host\n$port\n";
-  ' "${LAVISH_AXI_STATE_DIR:-$HOME/.lavish-axi}/state.json" "$1") \
-    || die "cannot resolve the board server from its Lavish session: $1"
+  ' "${LAVISH_AXI_STATE_DIR:-$HOME/.lavish-axi}/state.json" "$1" 2>/dev/null) \
+    || return 1
   LAVISH_AXI_HOST=${endpoint%$'\n'*}
   LAVISH_AXI_PORT=${endpoint##*$'\n'}
   export LAVISH_AXI_HOST LAVISH_AXI_PORT
@@ -456,7 +465,10 @@ cmd_poll() {
     iteration_started=$(poll_iteration_started) || die "cannot start the poll rate governor"
     [ -f "$artifact" ] && [ ! -L "$artifact" ] && [ -r "$artifact" ] \
       || die "artifact is no longer a readable file: $artifact"
-    apply_session_host "$artifact"
+    # Advisory, not fatal - see the FORK DIVERGENCE note on apply_session_host.
+    # A readable session refines host and port; an absent one leaves the route
+    # this listener was registered with in place.
+    apply_session_host "$artifact" || :
     # Posting a round's reply is BEST EFFORT and deliberately carries no delivery
     # machinery. The staged file is the only record that a reply is owed, so it is
     # consumed HERE - after every non-posting step that could abort this poll has

@@ -82,6 +82,10 @@ Coordinate any workflow rollback with its required-check names so a retired chec
 
 ## Development
 
+This fork runs its own Firstmate rather than tracking upstream exactly.
+Before merging from upstream, read [`docs/fork-divergences.md`](docs/fork-divergences.md): it lists the points where this fork's behavior deliberately contradicts upstream's, so a merge re-creates the conflict every time.
+Keep this fork's side at those points unless the divergence is being revisited on purpose, and add an entry there whenever a resolution deliberately keeps this fork's behavior over upstream's.
+
 Tracked changes to firstmate itself - `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `.tasks.toml`, `.github/workflows/`, `bin/`, `.agents/skills/`, and `skills/` - ship through the `no-mistakes` pipeline on a feature branch and require an explicit merge approval.
 Before making any such change, load the agent-only `firstmate-coding-guidelines` skill (`.agents/skills/firstmate-coding-guidelines/SKILL.md`).
 It has the knowledge-placement rules that keep `AGENTS.md` from regrowing after each diet pass.

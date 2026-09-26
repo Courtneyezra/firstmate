@@ -166,6 +166,22 @@ set_max_trees() {
   git -C "$PROJECT_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm 'pool limit'
 }
 
+# assert_endpoint_closed <what> proves the endpoint's shell, started when
+# `treehouse get` was typed into the pane, is no longer running anywhere.
+assert_endpoint_closed() {
+  local pid
+  [ -s "$CASE_DIR/endpoint.pid" ] || fail "$1: the endpoint's shell never started"
+  pid=$(cat "$CASE_DIR/endpoint.pid")
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    fail "$1 left its endpoint's shell (pid $pid) running"
+  fi
+}
+
 # assert_not_launched <id> <what> proves the refusal stopped before the worker.
 assert_not_launched() {
   [ ! -e "$HOME_DIR/state/$1.meta" ] || fail "$2: the refused spawn still published task metadata"
@@ -312,16 +328,7 @@ test_refused_slot_keeps_no_process_of_ours() {
   unset FM_FAKE_ENDPOINT_PID_FILE
   expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
     "a slot another live task holds must be refused as a bad slot"$'\n'"$out"
-  [ -s "$CASE_DIR/endpoint.pid" ] || fail "the endpoint's shell never entered the slot"
-  pid=$(cat "$CASE_DIR/endpoint.pid")
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    kill -0 "$pid" 2>/dev/null || break
-    sleep 0.1
-  done
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    fail "the refused spawn left its shell (pid $pid) running in $SLOT_DIR"
-  fi
+  assert_endpoint_closed "the refused spawn"
   assert_contains "$out" "when it has none this is exhaustion" \
     "the refusal still promised that asking again is always safe"
   pass "a refused slot keeps no process of the refusing spawn in it"
@@ -513,6 +520,40 @@ test_deadline_with_another_workers_young_process_is_exhaustion() {
   pass "another worker's young process does not hide an exhausted pool"
 }
 
+# Where the pane's path never follows `treehouse get`, the shell may sit in a
+# slot another task holds without the poll ever seeing it. Neither deadline exit
+# may leave it there: exhaustion or not, the endpoint is closed.
+test_deadline_exits_close_the_endpoint() {
+  local rec id out status
+  id=pool-deadline-exhausted-e1
+  rec=$(make_case deadline-exhausted-closed "$id")
+  read_case_record "$rec"
+  set_max_trees 1
+  write_pool_status in-use
+  fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+  export FM_FAKE_ENDPOINT_PID_FILE="$CASE_DIR/endpoint.pid"
+  out=$(run_pool_spawn "$id" "$PROJECT_DIR")
+  status=$?
+  unset FM_FAKE_ENDPOINT_PID_FILE
+  expect_code "$POOL_EXHAUSTED_EXIT" "$status" \
+    "the exhausted deadline case must still report exhaustion"$'\n'"$out"
+  assert_endpoint_closed "the exhausted deadline exit"
+
+  id=pool-deadline-generic-e2
+  rec=$(make_case deadline-generic-closed "$id")
+  read_case_record "$rec"
+  write_pool_status available
+  fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+  export FM_FAKE_ENDPOINT_PID_FILE="$CASE_DIR/endpoint.pid"
+  out=$(run_pool_spawn "$id" "$PROJECT_DIR")
+  status=$?
+  unset FM_FAKE_ENDPOINT_PID_FILE
+  expect_code 1 "$status" \
+    "the generic deadline case must keep its ordinary exit"$'\n'"$out"
+  assert_endpoint_closed "the generic deadline exit"
+  pass "both allocation-deadline exits close the endpoint"
+}
+
 test_slot_held_by_a_live_task_is_refused
 test_refused_slot_keeps_no_process_of_ours
 test_refused_only_slot_reports_exhaustion
@@ -528,5 +569,6 @@ test_free_slot_deadline_is_not_reported_as_exhaustion
 test_deadline_below_the_pool_limit_is_not_exhaustion
 test_deadline_with_our_own_new_slot_is_not_exhaustion
 test_deadline_with_another_workers_young_process_is_exhaustion
+test_deadline_exits_close_the_endpoint
 
 echo "# all fm-spawn-pool-slot-occupancy tests passed"

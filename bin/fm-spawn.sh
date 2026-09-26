@@ -4349,16 +4349,24 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     # in-use under this spawn's own shell, so only a pool at max_trees is one
     # that may create no more - and not even that when a slot holds a process
     # started since this spawn did, because that slot is this spawn's own.
+    # Both exits close the endpoint, from the abort trap, and that gives up the
+    # window an operator could otherwise inspect here. That is a decision, not a
+    # tidy-up: the shell may have followed `treehouse get` into a slot another
+    # task holds without the poll ever seeing it, and a window parked in
+    # somebody else's working copy is a misleading diagnostic surface - it shows
+    # their checkout, not this spawn's failure - while it keeps that copy
+    # occupied. A slot its rightful owner can use is worth more.
+    SPAWN_SLOT_REFUSED=1
     SPAWN_POOL_FREE=0
     fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" || SPAWN_POOL_FREE=$?
     SPAWN_POOL_NEW_PROCESS=0
     fm_treehouse_pool_holds_new_process "$PROJ_ABS" "$SPAWN_STARTED_EPOCH" || SPAWN_POOL_NEW_PROCESS=$?
     if [ "$SPAWN_POOL_FREE" = 1 ] && [ "$SPAWN_POOL_NEW_PROCESS" = 1 ] &&
       fm_treehouse_pool_at_limit "$PROJ_ABS"; then
-      echo "error: the Treehouse pool for '$PROJ_ABS' is exhausted: every slot is in use or leased and the pool is at max_trees, so task $ID could not be given a working copy. Land or tear down work to return a slot, or raise max_trees in the project's treehouse.toml; retrying now cannot succeed. Inspect window $T" >&2
+      echo "error: the Treehouse pool for '$PROJ_ABS' is exhausted: every slot is in use or leased and the pool is at max_trees, so task $ID could not be given a working copy. Land or tear down work to return a slot, or raise max_trees in the project's treehouse.toml; retrying now cannot succeed. Window $T is closed so its shell cannot stay in the pool" >&2
       exit "$FM_POOL_EXHAUSTED_EXIT"
     fi
-    echo "error: treehouse get did not enter an isolated worktree within 60s (last seen '${last_seen:-none}': $last_reason; spawning project '$PROJ_ABS'); inspect window $T" >&2
+    echo "error: treehouse get did not enter an isolated worktree within 60s (last seen '${last_seen:-none}': $last_reason; spawning project '$PROJ_ABS'); window $T is closed so its shell cannot stay in the pool" >&2
     exit 1
   fi
 

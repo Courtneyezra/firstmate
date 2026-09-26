@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Self-update a running firstmate and its secondmates to the latest origin.
+# Self-update a running firstmate and its secondmates to the latest commit on
+# this home's configured update remote.
 #
 # Mechanical half of the /updatefirstmate skill. Fast-forwards the running
-# firstmate repo's default branch from origin, then fast-forwards every
-# registered secondmate home. Local homes are treehouse worktrees or standalone
+# firstmate repo's default branch from that remote - origin unless
+# config/update-remote names another one, which is how a fleet runs from its
+# own fork - then fast-forwards every registered secondmate home from the same
+# remote. bin/fm-ff-lib.sh's fm_update_remote is the single owner of that
+# resolution and docs/configuration.md "Self-update remote" of the contract.
+# A configured remote a target repo does not define is reported as a skip
+# naming the remote, never silently retried against origin. Local homes are treehouse worktrees or standalone
 # clones; remote routes update their configured code root on that host and then
 # fast-forward the persistent home to that root. FAST-FORWARD ONLY, exactly like
 # fm-fleet-sync.sh: never force, never create a merge commit, never stash.
@@ -18,7 +24,8 @@
 # default branch, so a fast-forward there advances HEAD only and never touches
 # any other worktree's checkout or the shared `main` branch.
 #
-# The fast-forward mechanics live in bin/fm-ff-lib.sh (base_mode "origin" here);
+# The fast-forward mechanics live in bin/fm-ff-lib.sh (base_mode "origin" here,
+# meaning the configured update remote rather than the literal remote name);
 # the same library drives local and remote parent-targeted secondmate sync, so
 # there is one ff implementation, not several.
 #

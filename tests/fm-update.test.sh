@@ -556,6 +556,122 @@ test_primary_update_rebinds_local_watch() {
   pass "T12 a self-update rebinds a locally armed watch on the primary"
 }
 
+# Give the world a SECOND remote named "fork", seeded from origin's current tip
+# and then advanced on its own. This is the shape a fleet running from its own
+# fork actually has: two real remotes whose mains are both descendants of the
+# homes' current commit but which carry different commits. Worktree secondmate
+# homes share the primary's remotes, so adding it to $w/main reaches them too.
+add_fork_remote() {
+  local w=$1
+  git init -q --bare "$w/fork.git"
+  git -C "$w/fork.git" symbolic-ref HEAD refs/heads/main
+  git -C "$w/seed" push -q "$w/fork.git" main
+  git -C "$w/main" remote add fork "$w/fork.git"
+  git -C "$w/main" fetch -q fork
+  git -C "$w/main" remote set-head fork main >/dev/null 2>&1 || true
+}
+
+# Advance the fork remote by one commit that origin does not have.
+bump_fork() {
+  local w=$1 marker=$2
+  git -C "$w/seed" fetch -q "$w/fork.git" main
+  git -C "$w/seed" checkout -q -B forkwork FETCH_HEAD
+  printf 'fork-%s\n' "$marker" >> "$w/seed/README.md"
+  printf 'v-fork-%s\n' "$marker" > "$w/seed/AGENTS.md"
+  git -C "$w/seed" add -A
+  git -C "$w/seed" commit -qm "fork-$marker"
+  git -C "$w/seed" push -q "$w/fork.git" forkwork:main
+  git -C "$w/seed" checkout -q main
+}
+
+# --- T13: config/update-remote makes the fleet follow a fork ---------------
+# The captain's "run firstmate from our own fork" decision rests entirely on
+# this: /updatefirstmate must keep working, and must follow the CONFIGURED
+# remote rather than origin, for the primary and every secondmate home alike.
+# Both remotes are advanced here so following the wrong one is a visible
+# failure rather than an accidental pass.
+test_update_follows_configured_remote() {
+  local w out
+  w=$(new_world t13)
+  add_sm "$w" sm1
+  add_fork_remote "$w"
+  bump_origin "$w" instr
+  bump_fork "$w" one
+  mkdir -p "$w/home/config"
+  printf 'fork\n' > "$w/home/config/update-remote"
+
+  out=$(run_update "$w")
+
+  assert_contains "$out" "firstmate: updated " "firstmate fast-forwarded from the configured remote"
+  assert_contains "$out" "secondmate sm1: updated " "secondmate fast-forwarded from the configured remote"
+
+  git -C "$w/main" fetch -q fork
+  local forktip origintip
+  forktip=$(git -C "$w/main" rev-parse fork/main)
+  origintip=$(git -C "$w/main" rev-parse origin/main)
+  [ "$forktip" != "$origintip" ] || fail "fixture is vacuous: both remotes are at the same commit"
+  [ "$(git -C "$w/main" rev-parse HEAD)" = "$forktip" ] \
+    || fail "firstmate did not land on the configured remote's tip"
+  [ "$(git -C "$w/main" rev-parse HEAD)" != "$origintip" ] \
+    || fail "firstmate followed origin despite config/update-remote"
+  [ "$(git -C "$w/sm1" rev-parse HEAD)" = "$forktip" ] \
+    || fail "secondmate did not land on the configured remote's tip"
+  [ "$(git -C "$w/main" symbolic-ref --short HEAD 2>/dev/null)" = "main" ] \
+    || fail "firstmate left its default branch"
+  # Still fast-forward only: a merge commit would have two parents.
+  [ "$(git -C "$w/main" rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" -eq 2 ] \
+    || fail "the fork advance was not a single-parent fast-forward"
+  pass "T13 /updatefirstmate follows config/update-remote for the primary and its secondmate"
+}
+
+# --- T14: a configured remote the repo lacks is refused, not retried -------
+# Silently falling back to origin would put the home on the very main the
+# setting exists to move it off, which is the one outcome worse than not
+# updating at all.
+test_missing_configured_remote_is_refused() {
+  local w out before origin_tip
+  w=$(new_world t14)
+  add_sm "$w" sm1
+  bump_origin "$w" instr
+  before=$(git -C "$w/main" rev-parse HEAD)
+  # Read the real remote, not the local tracking ref: a refused update never
+  # fetches, so origin/main here is still the pre-bump commit either way.
+  origin_tip=$(git -C "$w/origin.git" rev-parse main)
+  mkdir -p "$w/home/config"
+  printf 'fork\n' > "$w/home/config/update-remote"
+
+  out=$(run_update "$w")
+
+  assert_contains "$out" "firstmate: skipped: no fork remote" "the skip must name the missing remote"
+  assert_contains "$out" "secondmate sm1: skipped: no fork remote" "the secondmate skip must name it too"
+  [ "$(git -C "$w/main" rev-parse HEAD)" = "$before" ] \
+    || fail "the primary moved despite the configured remote being absent"
+  [ "$before" != "$origin_tip" ] || fail "fixture is vacuous: origin never advanced"
+  [ "$(git -C "$w/main" rev-parse HEAD)" != "$origin_tip" ] \
+    || fail "the update silently fell back to origin"
+  assert_contains "$out" "restart-secondmates: none" "a skipped home earns no restart"
+  pass "T14 a configured remote the repo does not define is refused, never retried against origin"
+}
+
+# --- T15: absent or blank config/update-remote still means origin ----------
+test_blank_configured_remote_means_origin() {
+  local w out
+  w=$(new_world t15)
+  add_sm "$w" sm1
+  add_fork_remote "$w"
+  bump_origin "$w" instr
+  bump_fork "$w" two
+  mkdir -p "$w/home/config"
+  printf '   \n\n' > "$w/home/config/update-remote"
+
+  out=$(run_update "$w")
+
+  assert_contains "$out" "firstmate: updated " "a blank setting still updates"
+  [ "$(git -C "$w/main" rev-parse HEAD)" = "$(git -C "$w/main" rev-parse origin/main)" ] \
+    || fail "a blank config/update-remote did not resolve to origin"
+  pass "T15 a blank config/update-remote resolves to origin"
+}
+
 test_updates_main_and_secondmate
 test_reread_gate_is_instruction_only
 test_bin_only_advance_restarts
@@ -572,5 +688,8 @@ test_firstmate_wrong_branch_skipped
 test_firstmate_detached_head_skipped
 test_unsafe_secondmate_home_skipped_before_git_update
 test_primary_update_rebinds_local_watch
+test_update_follows_configured_remote
+test_missing_configured_remote_is_refused
+test_blank_configured_remote_means_origin
 
 echo "# all fm-update tests passed"

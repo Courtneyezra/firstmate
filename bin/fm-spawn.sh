@@ -171,9 +171,12 @@
 #   A refusal closes this spawn's own endpoint, from the abort trap, because its
 #   shell followed the allocation into the refused slot: left open, it would be a
 #   live process parked in another task's copy, the very occupancy it refused.
+#   Both allocation-deadline exits close it too, giving up that window for
+#   inspection, because the shell may sit unseen in a slot another task holds.
 #   EXIT CODES tell the two pool failures apart, because they need opposite
 #   responses and were previously one indistinguishable refusal: 75 means the pool
-#   is exhausted - it is at max_trees with nothing available, or the slot refused
+#   is exhausted - it is at max_trees with no slot this task could be granted and
+#   no unclaimed slot holding this spawn's own allocation, or the slot refused
 #   was the only one it had to offer and asking again would be handed it straight
 #   back - so work must be landed and retrying cannot help; 76 means this slot
 #   must not be used while another may be. Treehouse offers the same slot again

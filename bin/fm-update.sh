@@ -183,20 +183,42 @@ fm_ff_after_secondmate_settled() {  # <id> <home> <window> <status> <instr>
 }
 
 # A remote route's host resolves its update remote from its own inherited copy
-# of config/update-remote, so push the inherited set BEFORE asking it to update.
-# Otherwise a freshly changed setting would move that host along the old remote
-# while every local home followed the new one. Same transaction as
-# bin/fm-config-push.sh: per-route lock, fresh generation, live-only items.
-push_remote_inherited_config() {  # <id>
-  local id=$1 lock generation rc=0
+# of config/update-remote, so deliver that one item BEFORE asking it to update;
+# otherwise a freshly changed setting would move that host along the old remote
+# while every local home followed the new one. Only that item is pushed, so no
+# unrelated inherited item can block self-update. Same transaction as
+# bin/fm-config-push.sh: per-route lock, fresh generation, and a reread retry
+# marker written before the push and kept whenever the push changed something.
+# Returns 0 when delivered, 2 when the host's code root predates the setting
+# (its receiver does not declare the item), 1 on any other failure.
+push_remote_update_remote() {  # <id> <home>
+  local id=$1 home=$2 lock generation marker pending=0 out="" rc=0
   lock=$(fm_remote_inherit_transaction_lock_path "$STATE" "$id") || return 1
   fm_lock_acquire_wait "$lock" || return 1
-  if generation=$(fm_remote_inherit_generation_next "$STATE" "$id"); then
-    FM_CONFIG_INHERIT_LIVE=1 "$SCRIPT_DIR/fm-remote-inherit-push.sh" "$id" "$generation" < /dev/null || rc=$?
+  if marker=$(fm_secondmate_nudge_marker_path "$STATE" "$id"); then
+    if [ -f "$marker" ] && [ "$(fm_meta_get "$marker" remote)" = 1 ]; then pending=1; fi
+    fm_secondmate_nudge_write "$STATE" "$id" "$home" "" remote \
+      "$FM_REMOTE_SECOND_MATE_NUDGE_MESSAGE" 1 || { out="reread retry marker could not be written"; rc=1; }
   else
+    out="reread retry marker path is invalid"
     rc=1
   fi
+  if [ "$rc" -eq 0 ]; then
+    if ! generation=$(fm_remote_inherit_generation_next "$STATE" "$id"); then
+      out="inheritance generation could not be published"
+      rc=1
+    elif out=$(FM_CONFIG_INHERIT_LIVE=1 "$SCRIPT_DIR/fm-remote-inherit-push.sh" \
+      "$id" "$generation" update-remote < /dev/null 2>&1); then
+      if [ "$pending" -eq 0 ] && ! printf '%s\n' "$out" | grep -Eq '^(pushed|removed):'; then
+        rm -f -- "$marker"
+      fi
+    else
+      rc=1
+      case "$out" in *"path is not inherited material: config/update-remote"*) rc=2 ;; esac
+    fi
+  fi
   fm_lock_release "$lock" || true
+  [ -z "$out" ] || printf '%s\n' "$out"
   return "$rc"
 }
 
@@ -219,8 +241,16 @@ if [ -f "$SECONDMATES_MD" ]; then
     id=$SECONDMATE_REGISTRY_ID
     home=$SECONDMATE_REGISTRY_HOME
     if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 1 ]; then
-      if ! remote_out=$(push_remote_inherited_config "$id" 2>&1); then
-        echo "remote secondmate $id: skipped on $SECONDMATE_REGISTRY_HOST: not converged: inherited config push failed, so it was not updated: ${remote_out##*$'\n'}" >&2
+      push_rc=0
+      remote_out=$(push_remote_update_remote "$id" "$home" 2>&1) || push_rc=$?
+      # A host that predates the setting runs an update that always follows
+      # origin: harmless when origin is the chosen remote, but otherwise it could
+      # only advance that host along a remote this fleet did not choose.
+      if [ "$push_rc" -eq 2 ] && [ "$(fm_update_remote)" = origin ]; then push_rc=0; fi
+      if [ "$push_rc" -eq 2 ]; then
+        echo "remote secondmate $id: skipped on $SECONDMATE_REGISTRY_HOST: not converged: its Firstmate code root predates config/update-remote, so its update would follow origin instead of $(fm_update_remote); bring $SECONDMATE_REGISTRY_ROOT on that host onto $(fm_update_remote)'s default branch by hand, then rerun /updatefirstmate" >&2
+      elif [ "$push_rc" -ne 0 ]; then
+        echo "remote secondmate $id: skipped on $SECONDMATE_REGISTRY_HOST: not converged: config/update-remote could not be delivered, so it was not updated: ${remote_out##*$'\n'}" >&2
       elif remote_out=$("$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh update "$id" < /dev/null 2>&1); then
         remote_result=$(printf '%s\n' "$remote_out" | tail -1)
         case "$remote_result" in

@@ -248,9 +248,11 @@ test_dead_secondmate_gets_no_action() {
 
 # A fake SSH boundary for one remote route sm1 on remote-mac. It logs every
 # decoded remote command to $FM_FAKE_DIR/ssh.log, answers the inherited-config
-# transfer (recording each pushed payload as pushed-<rel with / as _>, or
-# refusing every put when FM_FAKE_INHERIT_MODE=fail), reports the code-root
-# update as an advance, and the mate as alive.
+# transfer (recording each pushed payload as pushed-<rel with / as _>), reports
+# the code-root update as an advance, and the mate as alive.
+# FM_FAKE_INHERIT_MODE models the receiver: fail refuses every item,
+# fail-others refuses everything but config/update-remote, and predates refuses
+# config/update-remote the way a host whose code root does not declare it does.
 add_remote_sm() {
   local w=$1
   cat > "$w/fakebin/fake-ssh" <<'SH'
@@ -267,13 +269,19 @@ decode() { printf '%s' "$1" | base64 --decode 2>/dev/null || printf '%s' "$1" | 
 rargs=()
 while IFS= read -r -d '' a; do rargs+=("$a"); done < <(decode "$argv_b64")
 printf '%s\n' "${rargs[*]}" >> "$FM_FAKE_DIR/ssh.log"
+case "${rargs[0]}:${FM_FAKE_INHERIT_MODE:-ok}:${rargs[2]:-}" in
+  fm-remote-inherit.sh:fail:*|fm-remote-inherit.sh:fail-others:config/update-remote) ;;
+  fm-remote-inherit.sh:fail-others:*)
+    rm -f "$payload"; echo "error: cannot lock inherited destination" >&2; exit 1 ;;
+esac
+case "${rargs[0]}:${FM_FAKE_INHERIT_MODE:-ok}" in
+  fm-remote-inherit.sh:fail)
+    rm -f "$payload"; echo "error: cannot lock inherited destination" >&2; exit 1 ;;
+  fm-remote-inherit.sh:predates)
+    rm -f "$payload"; echo "error: path is not inherited material: ${rargs[2]}" >&2; exit 1 ;;
+esac
 case "${rargs[0]}:${rargs[1]:-}" in
   fm-remote-inherit.sh:put)
-    if [ "${FM_FAKE_INHERIT_MODE:-ok}" = fail ]; then
-      rm -f "$payload"
-      echo "error: cannot lock inherited destination" >&2
-      exit 1
-    fi
     mv "$payload" "$FM_FAKE_DIR/pushed-$(printf '%s' "${rargs[2]}" | tr / _)"
     printf 'pushed: %s\n' "${rargs[2]}"
     ;;
@@ -716,6 +724,10 @@ test_remote_route_gets_update_remote_before_update() {
   [ -n "$put_line" ] && [ -n "$update_line" ] || fail "expected both the inherit push and the update on the wire"
   [ "$put_line" -lt "$update_line" ] \
     || fail "the remote update ran before the host had the current update remote"
+  [ "$(grep -c '^fm-remote-inherit.sh ' "$w/fake/ssh.log")" -eq 1 ] \
+    || fail "only config/update-remote should be pushed as the update precondition"
+  [ -f "$w/home/state/.secondmate-nudge-pending/sm1.pending" ] \
+    || fail "a changed inherited item must keep its reread retry marker"
   pass "T16 a remote route receives config/update-remote before its update runs"
 }
 
@@ -742,6 +754,88 @@ test_remote_inherit_failure_refuses_update() {
   esac
   assert_contains "$out" "restart-secondmates: none" "an unconverged route earns no restart"
   pass "T17 a failed inherit push refuses the remote update and reports it unconverged"
+}
+
+# --- T19: an unrelated inherited item cannot block self-update -------------
+# With the default remote the host's copy is already right; only the one item
+# the update depends on is delivered, so a broken other item changes nothing,
+# and an unchanged delivery leaves no reread retry behind.
+test_unrelated_inherit_failure_does_not_block_update() {
+  local w out
+  w=$(new_world t19)
+  add_remote_sm "$w"
+
+  out=$(FM_FAKE_INHERIT_MODE=fail-others FM_TEST_SSH_BIN="$w/fakebin/fake-ssh" run_update "$w")
+
+  assert_contains "$out" "remote secondmate sm1: updated on remote-mac" \
+    "an unrelated inherited item must not block the remote update"
+  [ ! -e "$w/home/state/.secondmate-nudge-pending/sm1.pending" ] \
+    || fail "an unchanged delivery must not leave a reread retry marker"
+  pass "T19 an unrelated inherited item cannot block a remote self-update"
+}
+
+# --- T20: a host that predates the setting is not updated onto origin ------
+# Its old code root follows origin unconditionally, which would strand it
+# ahead of the chosen fork; it is reported with the operator action instead.
+test_predating_host_is_not_updated_off_the_fork() {
+  local w out
+  w=$(new_world t20)
+  add_remote_sm "$w"
+  mkdir -p "$w/home/config"
+  printf 'fork\n' > "$w/home/config/update-remote"
+
+  out=$(PATH="$w/fakebin:$PATH" FM_FAKE_DIR="$w/fake" FM_FAKE_INHERIT_MODE=predates \
+    FM_SSH_BIN="$w/fakebin/fake-ssh" \
+    FM_ROOT_OVERRIDE="$w/main" FM_HOME="$w/home" "$UPDATE" 2>&1)
+
+  assert_contains "$out" "remote secondmate sm1: skipped on remote-mac: not converged: its Firstmate code root predates config/update-remote" \
+    "a predating host must be reported as not converged with the reason"
+  assert_contains "$out" "bring /srv/fm on that host onto fork's default branch by hand" \
+    "the report must name the operator action"
+  ! grep -q '^fm-remote-secondmate-control.sh update ' "$w/fake/ssh.log" \
+    || fail "a predating host was updated although it could only follow origin"
+  assert_contains "$out" "restart-secondmates: none" "an unconverged route earns no restart"
+  pass "T20 a host that predates config/update-remote is not updated while the fleet follows a fork"
+}
+
+# --- T21: with the default remote a predating host updates as before -------
+# Its old update follows origin, which is the chosen remote, so nothing wedges
+# and later inherited-set additions still reconcile through the ordinary update.
+test_predating_host_updates_when_remote_is_origin() {
+  local w out
+  w=$(new_world t21)
+  add_remote_sm "$w"
+
+  out=$(FM_FAKE_INHERIT_MODE=predates FM_TEST_SSH_BIN="$w/fakebin/fake-ssh" run_update "$w")
+
+  assert_contains "$out" "remote secondmate sm1: updated on remote-mac" \
+    "a predating host must still update when the fleet follows origin"
+  assert_contains "$out" "restart-secondmates: fm-sm1" "the updated live mate restarts as before"
+  pass "T21 a predating host still updates when the configured remote is origin"
+}
+
+# --- T22: a home ahead of the chosen remote is never advanced --------------
+# The chosen remote's default branch must contain the home's current commit;
+# otherwise the home stays put and nothing substitutes another remote.
+test_home_ahead_of_chosen_remote_is_refused() {
+  local w out before
+  w=$(new_world t22)
+  add_fork_remote "$w"
+  bump_origin "$w" instr
+  run_update "$w" >/dev/null
+  before=$(git -C "$w/main" rev-parse HEAD)
+  [ "$before" = "$(git -C "$w/origin.git" rev-parse main)" ] || fail "fixture: primary did not reach origin's tip"
+  bump_fork "$w" four
+  mkdir -p "$w/home/config"
+  printf 'fork\n' > "$w/home/config/update-remote"
+
+  out=$(run_update "$w")
+
+  assert_contains "$out" "firstmate: skipped: diverged from fork/main" \
+    "a home the chosen remote does not contain must be refused"
+  [ "$(git -C "$w/main" rev-parse HEAD)" = "$before" ] \
+    || fail "a home ahead of the chosen remote was moved"
+  pass "T22 a home the chosen remote does not contain is refused, never advanced"
 }
 
 # --- T18: a remote host's code root follows its home's inherited remote ----
@@ -804,5 +898,9 @@ test_blank_configured_remote_means_origin
 test_remote_route_gets_update_remote_before_update
 test_remote_inherit_failure_refuses_update
 test_remote_code_root_follows_home_remote
+test_unrelated_inherit_failure_does_not_block_update
+test_predating_host_is_not_updated_off_the_fork
+test_predating_host_updates_when_remote_is_origin
+test_home_ahead_of_chosen_remote_is_refused
 
 echo "# all fm-update tests passed"

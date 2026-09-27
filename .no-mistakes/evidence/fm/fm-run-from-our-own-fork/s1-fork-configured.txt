@@ -1,0 +1,14 @@
+## S1: config/update-remote = fork
+tips: origin/main=1976d4e fork/main=73cee49
+$ cat config/update-remote -> fork
+primary HEAD=d3f8d6c no-mistakes(review): Gate remote self-update on delivering only config/update-remote (parents: 45c8dee) | sm1 HEAD=d3f8d6c no-mistakes(review): Gate remote self-update on delivering only config/update-remote
+$ bin/fm-update.sh
+firstmate: updated d3f8d6c..73cee49
+no watches registered
+secondmate sm1: updated d3f8d6c..73cee49
+no watches registered
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+exit=0
+primary HEAD=73cee49 fork-only fix (parents: d3f8d6c) | sm1 HEAD=73cee49 fork-only fix

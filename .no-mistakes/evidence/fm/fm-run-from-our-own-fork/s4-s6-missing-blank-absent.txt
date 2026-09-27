@@ -1,0 +1,34 @@
+## S4 (adversarial): config names a remote the checkout does not define
+config/update-remote=upstream-fork
+remote-tracking refs before (origin/main deleted to prove no origin fetch): fork=73cee49 fork/main=73cee49 
+firstmate: skipped: no upstream-fork remote
+secondmate sm1: skipped: no upstream-fork remote
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+exit=0
+primary HEAD=d3f8d6c no-mistakes(review): Gate remote self-update on delivering only config/update-remote | sm1 HEAD=d3f8d6c no-mistakes(review): Gate remote self-update on delivering only config/update-remote
+remote-tracking refs after: fork=73cee49 fork/main=73cee49 
+
+## S5: whitespace-only config/update-remote means origin
+config bytes: 0000000              \n  \t  \n
+firstmate: updated d3f8d6c..1976d4e
+no watches registered
+secondmate sm1: updated d3f8d6c..1976d4e
+no watches registered
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+exit=0
+primary HEAD=1976d4e upstream-only change | sm1 HEAD=1976d4e upstream-only change
+
+## S6: no config/update-remote at all (every existing home) -> origin, unchanged behaviour
+firstmate: updated d3f8d6c..1976d4e
+no watches registered
+secondmate sm1: updated d3f8d6c..1976d4e
+no watches registered
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+exit=0
+primary HEAD=1976d4e upstream-only change | sm1 HEAD=1976d4e upstream-only change

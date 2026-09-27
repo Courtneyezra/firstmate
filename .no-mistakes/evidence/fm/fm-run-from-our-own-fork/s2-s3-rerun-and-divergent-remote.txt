@@ -1,0 +1,21 @@
+## S2: rerun with fork still configured (idempotent)
+firstmate: already current
+secondmate sm1: already current
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+exit=0
+primary HEAD=73cee49 fork-only fix | sm1 HEAD=73cee49 fork-only fix
+
+## S3 (adversarial): homes sit on the fork tip, config switched to origin, whose main does NOT contain that tip
+primary HEAD=73cee49 fork-only fix | sm1 HEAD=73cee49 fork-only fix
+$ bin/fm-update.sh
+firstmate: skipped: diverged from origin/main
+secondmate sm1: skipped: diverged from origin/main; reconciliation required (record: /tmp/fm-lab.WvVbMD/home/state/.secondmate-update-reconcile/sm1.pending)
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+exit=0
+primary HEAD=73cee49 fork-only fix | sm1 HEAD=73cee49 fork-only fix
+merge-base --is-ancestor fork-tip origin/main: no
+merge commits on primary main since start: 0

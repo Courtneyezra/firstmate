@@ -1,0 +1,28 @@
+## S7: primary's config/update-remote converges a live secondmate home via fm-config-push.sh
+before: sm1 config/update-remote = <absent>
+config-push: /tmp/fm-lab.WvVbMD/home -> live secondmate homes
+secondmate sm1 (/tmp/fm-lab.WvVbMD/w/sm1):
+  crew-dispatch.json: unchanged
+  crew-harness: unchanged
+  backlog-backend: unchanged
+  backend: unchanged
+  herdr-presentation-spaces: unchanged
+  startup-memory-budget: unchanged
+  trace-context: unchanged - session-scoped
+  launch-env-allowlist: unchanged
+  claude-permission-mode: unchanged
+  lavish-axi-host: unchanged
+  update-remote: pushed
+  data/captain-shared.md: unchanged
+CONFIG_REREAD: secondmate sm1: send failed: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/fleet-max/.no-mistakes/repos/c7ade90a109c.git)
+exit=1
+after: sm1 config/update-remote = fork
+
+## S7b: sm1's own resolution of the remote, then updating with fork configured
+fm_update_remote (FM_HOME=sm1) -> fork
+
+## S8: remotes and origin meaning untouched by the setting
+fork	/tmp/fm-lab.WvVbMD/w/fork.git (fetch)
+fork	/tmp/fm-lab.WvVbMD/w/fork.git (push)
+origin	/tmp/fm-lab.WvVbMD/w/origin.git (fetch)
+origin	/tmp/fm-lab.WvVbMD/w/origin.git (push)

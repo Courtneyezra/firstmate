@@ -1,0 +1,9 @@
+base=0e8eee2 fork tip=811cf57 origin tip=f1c8406
+
+===== R1 host home inherited config/update-remote=fork -> host code root AND home land on fork tip =====
+  | synced: 811cf5772f711ad96e12a93c31b2516c1ff6d23d instr=
+  code root HEAD=811cf57  home HEAD=811cf57
+
+===== R2 host home has no config/update-remote -> host follows origin as before =====
+  | synced: f1c84067a719677361499ec9052c66adece907e7 instr=
+  code root HEAD=f1c8406  home HEAD=f1c8406

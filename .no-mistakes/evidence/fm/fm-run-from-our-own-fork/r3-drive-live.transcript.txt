@@ -1,0 +1,62 @@
+base=0e8eee2 fork tip=ac4ed08 origin tip=5ea3403 (diverged: fork and origin at different commits)
+
+===== S1 config/update-remote=fork -> primary + local secondmate land on fork tip, not origin =====
+  primary HEAD=0e8eee2  sm1 HEAD=0e8eee2  origin/main=5ea3403  fork/main=ac4ed08
+  | firstmate: updated 0e8eee2..ac4ed08
+  | no watches registered
+  | secondmate sm1: updated 0e8eee2..ac4ed08
+  | no watches registered
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  primary HEAD=ac4ed08  sm1 HEAD=ac4ed08  origin/main=5ea3403  fork/main=ac4ed08
+  primary HEAD parents: 1 (1 = single-parent ff)
+
+===== S2 no config/update-remote -> unchanged behaviour, follows origin =====
+  primary HEAD=0e8eee2  sm1 HEAD=0e8eee2  origin/main=5ea3403  fork/main=ac4ed08
+  | firstmate: updated 0e8eee2..5ea3403
+  | no watches registered
+  | secondmate sm1: updated 0e8eee2..5ea3403
+  | no watches registered
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  primary HEAD=5ea3403  sm1 HEAD=5ea3403  origin/main=5ea3403  fork/main=ac4ed08
+
+===== S3 whitespace-only config/update-remote -> origin =====
+  primary HEAD=0e8eee2  sm1 HEAD=0e8eee2  origin/main=5ea3403  fork/main=ac4ed08
+  | firstmate: updated 0e8eee2..5ea3403
+  | no watches registered
+  | secondmate sm1: updated 0e8eee2..5ea3403
+  | no watches registered
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  primary HEAD=5ea3403  sm1 HEAD=5ea3403  origin/main=5ea3403  fork/main=ac4ed08
+
+===== S4 adversarial: configured remote 'myfork' not defined in repo -> skip by name, no origin fallback =====
+  primary HEAD=0e8eee2  sm1 HEAD=0e8eee2  origin/main=5ea3403  fork/main=ac4ed08
+  | firstmate: skipped: no myfork remote
+  | secondmate sm1: skipped: no myfork remote
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  primary HEAD=0e8eee2  sm1 HEAD=0e8eee2  origin/main=5ea3403  fork/main=ac4ed08
+  origin/main tracking ref moved (fetched)? no
+
+===== S5 adversarial: fork configured but primary/secondmate already AHEAD of the fork (fork/main is an ancestor of their HEAD) -> refused, never moved back or elsewhere =====
+  fork(behind)/main=0e8eee2
+  primary HEAD=5ea3403  sm1 HEAD=5ea3403  origin/main=5ea3403  fork/main=ac4ed08
+  | firstmate: skipped: diverged from fork/main
+  | secondmate sm1: skipped: diverged from fork/main; reconciliation required (record: <lab>/state/.secondmate-update-reconcile/sm1.pending)
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  primary HEAD=5ea3403  sm1 HEAD=5ea3403  origin/main=5ea3403  fork/main=ac4ed08
+
+===== S6 origin unaffected for other commands: primary's origin URL and push config untouched after fork update =====
+  fork	<lab>/fork.git (fetch)
+  fork	<lab>/fork.git (push)
+  origin	<lab>/origin.git (fetch)
+  origin	<lab>/origin.git (push)
+  branch.main.remote=origin

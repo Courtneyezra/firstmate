@@ -1,0 +1,39 @@
+base=0e8eee2 fork tip=5f86227 origin tip=1a44566 old(predating) root=050a446
+
+===== RR1 fleet set to fork just now; up-to-date host has NO inherited copy yet -> copy pushed first, host root+home land on fork tip =====
+  primary=0e8eee2 hostroot=0e8eee2 hosthome=0e8eee2 | origin/main=1a44566 fork/main=5f86227 | host home config/update-remote=<absent>
+  | firstmate: updated 0e8eee2..5f86227
+  | no watches registered
+  | remote secondmate sm1: updated on labhost (5f86227b7bd1c7174a36ece4e609181c3abae96e)
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  wire order:
+    [host labhost] fm-remote-inherit.sh put config/update-remote 5 24ecccc1ee8d359669c641b84c51de4885a4b7d397611d46be9de82bffe1e5c3 1
+    [host labhost] fm-remote-secondmate-control.sh update sm1
+  primary=5f86227 hostroot=5f86227 hosthome=5f86227 | origin/main=1a44566 fork/main=5f86227 | host home config/update-remote=fork
+
+===== RR2 adversarial: fleet on fork, host code root PREDATES the setting -> NOT converged, host not moved onto origin =====
+  primary=0e8eee2 hostroot=050a446 hosthome=050a446 | origin/main=1a44566 fork/main=5f86227 | host home config/update-remote=<absent>
+  | firstmate: updated 0e8eee2..5f86227
+  | no watches registered
+  | remote secondmate sm1: skipped on labhost: not converged: its Firstmate code root predates config/update-remote, so its update would follow origin instead of fork; bring <lab>/hostroot on that host onto fork's default branch by hand, then rerun /updatefirstmate
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  wire order:
+    [host labhost] fm-remote-inherit.sh put config/update-remote 5 24ecccc1ee8d359669c641b84c51de4885a4b7d397611d46be9de82bffe1e5c3 2
+  primary=5f86227 hostroot=050a446 hosthome=050a446 | origin/main=1a44566 fork/main=5f86227 | host home config/update-remote=<absent>
+
+===== RR3 fleet on origin (no file), host code root predates -> updates exactly as before (no wedge) =====
+  primary=0e8eee2 hostroot=050a446 hosthome=050a446 | origin/main=1a44566 fork/main=5f86227 | host home config/update-remote=<absent>
+  | firstmate: updated 0e8eee2..1a44566
+  | no watches registered
+  | remote secondmate sm1: updated on labhost (1a44566576752f057a092999d36c4792bd7f3fbf, instructions changed: bin,.agents/skills)
+  | reread-firstmate: no
+  | restart-secondmates: none
+  | nudge-secondmates: none
+  wire order:
+    [host labhost] fm-remote-inherit.sh absent config/update-remote 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 3
+    [host labhost] fm-remote-secondmate-control.sh update sm1
+  primary=1a44566 hostroot=1a44566 hosthome=1a44566 | origin/main=1a44566 fork/main=5f86227 | host home config/update-remote=<absent>

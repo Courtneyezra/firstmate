@@ -353,8 +353,8 @@ It does not change where branches are pushed, where pull requests are opened, or
 The remote is resolved once per home from `$FM_HOME/config/update-remote`, not per checkout, and it is part of the inherited configuration the primary pushes into every secondmate home (`bin/fm-config-inherit-lib.sh`).
 Homes that follow different remotes drift apart silently, so the primary's value wins and is re-pushed at every convergence point, exactly like the other inherited settings.
 Set it in the primary home and let the ordinary secondmate convergence carry it; a remote route receives it over the same inherited-material push.
-`/updatefirstmate` also delivers `config/update-remote` to each remote route immediately before updating it, and reports the route as not converged instead of updating it when that delivery fails.
-A remote host whose Firstmate code root predates the setting cannot read it and would follow `origin`, so when the configured remote is not `origin` that host is not updated at all; bring its code root onto the configured remote's default branch by hand, then rerun `/updatefirstmate`.
+`/updatefirstmate` also delivers `config/update-remote` alone to each remote route immediately before updating it, and reports the route as not converged instead of updating it when that delivery fails; no other inherited item can block the update.
+A remote host whose Firstmate code root predates the setting refuses the item and would follow `origin`, so it is updated as before only when the configured remote is `origin`; otherwise it is not updated at all, and the operator brings its code root onto the configured remote's default branch by hand, then reruns `/updatefirstmate`.
 On a remote route the code root on that host is updated first and the persistent home then follows that code root, so `bin/fm-remote-secondmate-control.sh` reads the home's inherited copy and passes it to the code-root update as `FM_UPDATE_REMOTE`.
 That environment variable overrides the file for one command and exists for that hand-off and for tests; it is not how an operator configures a home.
 

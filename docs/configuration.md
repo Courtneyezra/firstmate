@@ -371,7 +371,7 @@ Following the wrong main is the failure this setting exists to prevent, so an un
 A standalone-clone secondmate home therefore needs the remote added to its own clone; a linked-worktree home shares the primary's remotes and needs nothing.
 
 Fast-forward-only remains the rule on every path.
-Pointing a home at a remote whose default branch is not a descendant of that home's current commit is a divergence, so the update skips it and records the divergence rather than forcing, merging, or stashing ([Operational home layout and state](#operational-home-layout-and-state)).
+Pointing a home at a remote whose default branch is not a descendant of that home's current commit is a divergence, so the update skips it, recording a durable reconciliation marker for a secondmate home, rather than forcing, merging, or stashing ([Operational home layout and state](#operational-home-layout-and-state)).
 Before changing the file, confirm the new remote's default branch already contains the home's current commit.
 
 ## Backlog backend (.tasks.toml / config/backlog-backend)

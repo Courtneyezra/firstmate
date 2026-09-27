@@ -1,0 +1,36 @@
+
+=== S2 config/update-remote=fork: primary and secondmate land on fork tip, not origin ===
+fixture: primary is ancestor of both tips and tips differ: yes
+upstream(origin)/main=63eae6d fork/main=f4293cc
+primary HEAD=51b2bde (main) sm1 HEAD=51b2bde
+firstmate: updated 51b2bde..f4293cc
+no watches registered
+secondmate sm1: updated 51b2bde..f4293cc
+no watches registered
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+[exit 0]
+upstream(origin)/main=63eae6d fork/main=f4293cc
+primary HEAD=f4293cc (main) sm1 HEAD=f4293cc
+parents of primary HEAD: 2 (2 = single-parent ff)
+primary HEAD == fork/main? yes
+sm1 HEAD == fork/main? yes
+primary HEAD != origin main? yes
+remotes unchanged by update (origin still upstream)? yes
+fork	/tmp/fm-upd-live.WKhzHw/fork.git (fetch)
+fork	/tmp/fm-upd-live.WKhzHw/fork.git (push)
+origin	/tmp/fm-upd-live.WKhzHw/upstream.git (fetch)
+origin	/tmp/fm-upd-live.WKhzHw/upstream.git (push)
+branch.main upstream still: origin/main
+
+=== S2b second run is idempotent: already current on the fork ===
+firstmate: already current
+secondmate sm1: already current
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+[exit 0]
+upstream(origin)/main=63eae6d fork/main=f4293cc
+primary HEAD=f4293cc (main) sm1 HEAD=f4293cc
+sandbox removed: yes

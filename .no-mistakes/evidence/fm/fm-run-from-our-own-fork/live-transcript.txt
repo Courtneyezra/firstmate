@@ -1,0 +1,82 @@
+
+=== S1 unconfigured home follows origin (fork also advanced, must be ignored) ===
+upstream(origin)/main=a10fc08 fork/main=700764f
+primary HEAD=9ca4e01 (main) sm1 HEAD=9ca4e01
+firstmate: updated 9ca4e01..a10fc08
+no watches registered
+secondmate sm1: updated 9ca4e01..a10fc08
+no watches registered
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+[exit 0]
+upstream(origin)/main=a10fc08 fork/main=700764f
+primary HEAD=a10fc08 (main) sm1 HEAD=a10fc08
+
+=== S2 config/update-remote=fork: primary and secondmate land on fork tip, not origin ===
+upstream(origin)/main=d61c986 fork/main=75f27d4
+primary HEAD=a10fc08 (main) sm1 HEAD=a10fc08
+firstmate: skipped: diverged from fork/main
+secondmate sm1: skipped: diverged from fork/main; reconciliation required (record: /tmp/fm-upd-live.WY1xHj/lab/state/.secondmate-update-reconcile/sm1.pending)
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+[exit 0]
+upstream(origin)/main=d61c986 fork/main=75f27d4
+primary HEAD=a10fc08 (main) sm1 HEAD=a10fc08
+parents of primary HEAD: 2 (2 = single-parent ff)
+primary HEAD == fork/main? NO
+remotes unchanged by update? yes
+fork	/tmp/fm-upd-live.WY1xHj/fork.git (fetch)
+fork	/tmp/fm-upd-live.WY1xHj/fork.git (push)
+origin	/tmp/fm-upd-live.WY1xHj/upstream.git (fetch)
+origin	/tmp/fm-upd-live.WY1xHj/upstream.git (push)
+
+=== S3 configured remote missing from repo: skip naming it, no origin fallback ===
+upstream(origin)/main=dc27669 fork/main=75f27d4
+primary HEAD=d61c986 (main) sm1 HEAD=d61c986
+firstmate: skipped: no myfork remote
+secondmate sm1: skipped: no myfork remote
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+[exit 0]
+upstream(origin)/main=dc27669 fork/main=75f27d4
+primary HEAD=d61c986 (main) sm1 HEAD=d61c986
+primary unmoved? yes
+
+=== S4 whitespace-only config/update-remote resolves to origin ===
+upstream(origin)/main=4a33a55 fork/main=a045729
+primary HEAD=dc27669 (main) sm1 HEAD=dc27669
+firstmate: updated dc27669..4a33a55
+no watches registered
+secondmate sm1: updated dc27669..4a33a55
+no watches registered
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+[exit 0]
+upstream(origin)/main=4a33a55 fork/main=a045729
+primary HEAD=4a33a55 (main) sm1 HEAD=4a33a55
+
+=== S5 adversarial: home already on origin commit the fork lacks, fork configured -> refused, not moved ===
+upstream(origin)/main=2f8a466 fork/main=a1111ae
+primary HEAD=2f8a466 (main) sm1 HEAD=2f8a466
+firstmate: skipped: diverged from fork/main
+secondmate sm1: skipped: diverged from fork/main; reconciliation required (record: /tmp/fm-upd-live.WY1xHj/lab/state/.secondmate-update-reconcile/sm1.pending)
+reread-firstmate: no
+restart-secondmates: none
+nudge-secondmates: none
+[exit 0]
+upstream(origin)/main=2f8a466 fork/main=a1111ae
+primary HEAD=2f8a466 (main) sm1 HEAD=2f8a466
+primary unmoved? yes
+
+=== S6 receiver: target code root accepts config/update-remote as inherited material; base code root refuses it ===
+pushed: config/update-remote
+[target exit 0] home copy: fork
+resolved by fm_update_remote with that home: fork
+error: path is not inherited material: config/update-remote
+[base exit 1]
+
+sandbox removed: yes

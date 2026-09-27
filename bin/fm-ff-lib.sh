@@ -75,13 +75,13 @@ fm_update_remote() {
   printf '%s\n' "${value:-origin}"
 }
 
-# The default branch of <dir>, preferring the configured update remote's
-# recorded HEAD, then origin's, then a local main/master. With no
-# config/update-remote the first two lookups are the same remote, so an
-# unconfigured home resolves exactly as it always did.
+# The default branch of <dir>, preferring [remote]'s recorded HEAD, then
+# origin's, then a local main/master. [remote] defaults to origin, so a caller
+# that names none resolves exactly as it always did; ff_target names the
+# configured update remote for the firstmate homes it advances.
 default_branch() {
-  local dir=$1 ref branch candidate
-  for candidate in "$(fm_update_remote)" origin; do
+  local dir=$1 preferred=${2:-origin} ref branch candidate
+  for candidate in "$preferred" origin; do
     ref=$(git -C "$dir" symbolic-ref --quiet --short "refs/remotes/$candidate/HEAD" 2>/dev/null || true)
     if [ -n "$ref" ]; then
       echo "${ref#"$candidate"/}"
@@ -435,8 +435,9 @@ ff_target() {
     return 0
   fi
 
-  local default base cur instr local_rev base_rev before after out
-  default=$(default_branch "$dir") || {
+  local default base cur instr local_rev base_rev before after out remote
+  remote=$(fm_update_remote)
+  default=$(default_branch "$dir" "$remote") || {
     echo "$label: skipped: cannot determine default branch"
     return 0
   }
@@ -445,8 +446,6 @@ ff_target() {
   # "origin" means "this home's configured update remote", which IS origin
   # unless config/update-remote names another one.
   if [ "$base_mode" = origin ]; then
-    local remote
-    remote=$(fm_update_remote)
     if ! git -C "$dir" remote get-url "$remote" >/dev/null 2>&1; then
       echo "$label: skipped: no $remote remote"
       return 0

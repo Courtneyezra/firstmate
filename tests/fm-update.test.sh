@@ -78,7 +78,8 @@ SH
   mkdir -p "$w/seed/bin" "$w/seed/.agents/skills"
   printf 'echo a\n' > "$w/seed/bin/tool.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$w/seed/bin/fm-remote-secondmate-control.sh"
-  chmod +x "$w/seed/bin/fm-remote-secondmate-control.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$w/seed/bin/fm-remote-inherit.sh"
+  chmod +x "$w/seed/bin/fm-remote-secondmate-control.sh" "$w/seed/bin/fm-remote-inherit.sh"
   printf 's1\n' > "$w/seed/.agents/skills/note.md"
   git -C "$w/seed" add -A
   git -C "$w/seed" commit -qm c1
@@ -245,17 +246,18 @@ test_dead_secondmate_gets_no_action() {
   pass "T3d an already-stopped secondmate is left to startup recovery"
 }
 
-# --- T3e: a legacy remote advance still restarts ---------------------------
-# The host's instr= suffix is reporting detail; the parent no longer routes on it,
-# so an older host that cannot report a diff can no longer suppress the restart.
-test_legacy_remote_advance_restarts() {
-  local w out fake_ssh
-  w=$(new_world t3e)
-  fake_ssh="$w/fakebin/fake-ssh"
-  cat > "$fake_ssh" <<'SH'
+# A fake SSH boundary for one remote route sm1 on remote-mac. It logs every
+# decoded remote command to $FM_FAKE_DIR/ssh.log, answers the inherited-config
+# transfer (recording each pushed payload as pushed-<rel with / as _>, or
+# refusing every put when FM_FAKE_INHERIT_MODE=fail), reports the code-root
+# update as an advance, and the mate as alive.
+add_remote_sm() {
+  local w=$1
+  cat > "$w/fakebin/fake-ssh" <<'SH'
 #!/usr/bin/env bash
 set -u
-cat > /dev/null
+payload=$(mktemp "$FM_FAKE_DIR/stdin.XXXXXX")
+cat > "$payload"
 while [ "$#" -gt 0 ]; do
   case "$1" in -o) shift 2 ;; --) shift; break ;; *) exit 90 ;; esac
 done
@@ -264,13 +266,25 @@ argv_b64=$4
 decode() { printf '%s' "$1" | base64 --decode 2>/dev/null || printf '%s' "$1" | base64 -D; }
 rargs=()
 while IFS= read -r -d '' a; do rargs+=("$a"); done < <(decode "$argv_b64")
-case "${rargs[1]:-}" in
-  update) printf 'synced: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' ;;
-  state) printf 'alive\n' ;;
+printf '%s\n' "${rargs[*]}" >> "$FM_FAKE_DIR/ssh.log"
+case "${rargs[0]}:${rargs[1]:-}" in
+  fm-remote-inherit.sh:put)
+    if [ "${FM_FAKE_INHERIT_MODE:-ok}" = fail ]; then
+      rm -f "$payload"
+      echo "error: cannot lock inherited destination" >&2
+      exit 1
+    fi
+    mv "$payload" "$FM_FAKE_DIR/pushed-$(printf '%s' "${rargs[2]}" | tr / _)"
+    printf 'pushed: %s\n' "${rargs[2]}"
+    ;;
+  fm-remote-inherit.sh:absent) printf 'unchanged: %s\n' "${rargs[2]}" ;;
+  *:update) printf 'synced: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' ;;
+  *:state) printf 'alive\n' ;;
   *) exit 91 ;;
 esac
+rm -f "$payload"
 SH
-  chmod +x "$fake_ssh"
+  chmod +x "$w/fakebin/fake-ssh"
   cat > "$w/home/state/sm1.meta" <<EOF
 window=remote:sm1
 endpoint_task_id=sm1
@@ -284,8 +298,17 @@ remote_backend=herdr
 EOF
   printf -- '- sm1 - remote domain (host: remote-mac; root: /srv/fm; home: /srv/sm1; scope: things; projects: p; added 2026-09-03)\n' \
     > "$w/home/data/secondmates.md"
+}
 
-  out=$(FM_TEST_SSH_BIN="$fake_ssh" run_update "$w")
+# --- T3e: a legacy remote advance still restarts ---------------------------
+# The host's instr= suffix is reporting detail; the parent no longer routes on it,
+# so an older host that cannot report a diff can no longer suppress the restart.
+test_legacy_remote_advance_restarts() {
+  local w out
+  w=$(new_world t3e)
+  add_remote_sm "$w"
+
+  out=$(FM_TEST_SSH_BIN="$w/fakebin/fake-ssh" run_update "$w")
 
   assert_contains "$out" "remote secondmate sm1: updated on remote-mac" \
     "the legacy remote advance was not accepted"
@@ -672,6 +695,93 @@ test_blank_configured_remote_means_origin() {
   pass "T15 a blank config/update-remote resolves to origin"
 }
 
+# --- T16: a remote route receives the update remote BEFORE it updates ------
+# The host resolves the remote from its own inherited copy of the setting, so
+# the primary's current answer must reach it first; otherwise a freshly set
+# fork would move every local home while that host followed origin.
+test_remote_route_gets_update_remote_before_update() {
+  local w out put_line update_line
+  w=$(new_world t16)
+  add_remote_sm "$w"
+  mkdir -p "$w/home/config"
+  printf 'fork\n' > "$w/home/config/update-remote"
+
+  out=$(FM_TEST_SSH_BIN="$w/fakebin/fake-ssh" run_update "$w")
+
+  assert_contains "$out" "remote secondmate sm1: updated on remote-mac" "the remote route still updated"
+  [ "$(cat "$w/fake/pushed-config_update-remote" 2>/dev/null)" = fork ] \
+    || fail "the primary's config/update-remote was not delivered to the remote home"
+  put_line=$(grep -n '^fm-remote-inherit.sh put config/update-remote ' "$w/fake/ssh.log" | head -1 | cut -d: -f1)
+  update_line=$(grep -n '^fm-remote-secondmate-control.sh update sm1$' "$w/fake/ssh.log" | head -1 | cut -d: -f1)
+  [ -n "$put_line" ] && [ -n "$update_line" ] || fail "expected both the inherit push and the update on the wire"
+  [ "$put_line" -lt "$update_line" ] \
+    || fail "the remote update ran before the host had the current update remote"
+  pass "T16 a remote route receives config/update-remote before its update runs"
+}
+
+# --- T17: a failed inherit push refuses the remote update ------------------
+# Updating on the host's stale copy could land it on the wrong remote's main,
+# so an unconverged route is reported, not updated and not restarted.
+test_remote_inherit_failure_refuses_update() {
+  local w out
+  w=$(new_world t17)
+  add_remote_sm "$w"
+  mkdir -p "$w/home/config"
+  printf 'fork\n' > "$w/home/config/update-remote"
+
+  out=$(PATH="$w/fakebin:$PATH" FM_FAKE_DIR="$w/fake" FM_FAKE_INHERIT_MODE=fail \
+    FM_SSH_BIN="$w/fakebin/fake-ssh" \
+    FM_ROOT_OVERRIDE="$w/main" FM_HOME="$w/home" "$UPDATE" 2>&1)
+
+  assert_contains "$out" "remote secondmate sm1: skipped on remote-mac: not converged" \
+    "a failed inherit push must be reported as not converged"
+  ! grep -q '^fm-remote-secondmate-control.sh update ' "$w/fake/ssh.log" \
+    || fail "the remote update ran despite the failed inherit push"
+  case "$out" in
+    *"updated on remote-mac"*) fail "an unconverged route must not report success" ;;
+  esac
+  assert_contains "$out" "restart-secondmates: none" "an unconverged route earns no restart"
+  pass "T17 a failed inherit push refuses the remote update and reports it unconverged"
+}
+
+# --- T18: a remote host's code root follows its home's inherited remote ----
+# On the host, cmd_update runs the code-root update with FM_HOME pointed at the
+# code root, which has no config/update-remote of its own; the home's inherited
+# copy is what must steer it.
+test_remote_code_root_follows_home_remote() {
+  local w home out forktip origintip
+  w=$(new_world t18)
+  add_fork_remote "$w"
+  bump_origin "$w" instr
+  bump_fork "$w" three
+  home="$w/rhome"
+  git clone -q "$w/origin.git" "$home"
+  git -C "$home" reset -q --hard "$(git -C "$w/main" rev-parse HEAD)"
+  printf 'sm1\n' > "$home/.fm-secondmate-home"
+  mkdir -p "$home/config" "$home/state"
+  printf 'fork\n' > "$home/config/update-remote"
+  touch "$home/state/.last-watcher-beat"
+  # Like the real checkout's .gitignore: runtime and home-local files never
+  # dirty the code root or the home.
+  printf 'state/\n' >> "$w/main/.git/info/exclude"
+  printf 'state/\nconfig/\n.fm-secondmate-home\n' >> "$home/.git/info/exclude"
+
+  out=$(PATH="$w/fakebin:$PATH" FM_FAKE_DIR="$w/fake" \
+    FM_ROOT_OVERRIDE="$w/main" FM_HOME="$home" \
+    "$ROOT/bin/fm-remote-secondmate-control.sh" update sm1 2>&1)
+
+  git -C "$w/main" fetch -q origin
+  forktip=$(git -C "$w/main" rev-parse fork/main)
+  origintip=$(git -C "$w/main" rev-parse origin/main)
+  [ "$forktip" != "$origintip" ] || fail "fixture is vacuous: both remotes are at the same commit"
+  assert_contains "$out" "synced: $forktip" "the remote home should sync to the fork's tip"
+  [ "$(git -C "$w/main" rev-parse HEAD)" = "$forktip" ] \
+    || fail "the remote code root did not follow the home's inherited update remote"
+  [ "$(git -C "$home" rev-parse HEAD)" = "$forktip" ] \
+    || fail "the remote home did not land on the fork's tip"
+  pass "T18 a remote code root follows its home's inherited config/update-remote"
+}
+
 test_updates_main_and_secondmate
 test_reread_gate_is_instruction_only
 test_bin_only_advance_restarts
@@ -691,5 +801,8 @@ test_primary_update_rebinds_local_watch
 test_update_follows_configured_remote
 test_missing_configured_remote_is_refused
 test_blank_configured_remote_means_origin
+test_remote_route_gets_update_remote_before_update
+test_remote_inherit_failure_refuses_update
+test_remote_code_root_follows_home_remote
 
 echo "# all fm-update tests passed"

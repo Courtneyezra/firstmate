@@ -81,6 +81,10 @@ SECONDMATES_MD="$FM_HOME/data/secondmates.md"
 . "$SCRIPT_DIR/fm-ff-lib.sh"
 # shellcheck source=bin/fm-secondmate-restart-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-restart-lib.sh"
+# shellcheck source=bin/fm-wake-lib.sh
+. "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-secondmate-nudge-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-nudge-lib.sh"
 
 "$SCRIPT_DIR/fm-guard.sh" || true
 
@@ -178,6 +182,24 @@ fm_ff_after_secondmate_settled() {  # <id> <home> <window> <status> <instr>
   claim_settled_secondmate "$1"
 }
 
+# A remote route's host resolves its update remote from its own inherited copy
+# of config/update-remote, so push the inherited set BEFORE asking it to update.
+# Otherwise a freshly changed setting would move that host along the old remote
+# while every local home followed the new one. Same transaction as
+# bin/fm-config-push.sh: per-route lock, fresh generation, live-only items.
+push_remote_inherited_config() {  # <id>
+  local id=$1 lock generation rc=0
+  lock=$(fm_remote_inherit_transaction_lock_path "$STATE" "$id") || return 1
+  fm_lock_acquire_wait "$lock" || return 1
+  if generation=$(fm_remote_inherit_generation_next "$STATE" "$id"); then
+    FM_CONFIG_INHERIT_LIVE=1 "$SCRIPT_DIR/fm-remote-inherit-push.sh" "$id" "$generation" < /dev/null || rc=$?
+  else
+    rc=1
+  fi
+  fm_lock_release "$lock" || true
+  return "$rc"
+}
+
 # Live direct reports first: state/<id>.meta with kind=secondmate carries the
 # authoritative home= path.
 sweep_live_secondmate_metas "$STATE" origin yes
@@ -197,7 +219,9 @@ if [ -f "$SECONDMATES_MD" ]; then
     id=$SECONDMATE_REGISTRY_ID
     home=$SECONDMATE_REGISTRY_HOME
     if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 1 ]; then
-      if remote_out=$("$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh update "$id" < /dev/null 2>&1); then
+      if ! remote_out=$(push_remote_inherited_config "$id" 2>&1); then
+        echo "remote secondmate $id: skipped on $SECONDMATE_REGISTRY_HOST: not converged: inherited config push failed, so it was not updated: ${remote_out##*$'\n'}" >&2
+      elif remote_out=$("$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh update "$id" < /dev/null 2>&1); then
         remote_result=$(printf '%s\n' "$remote_out" | tail -1)
         case "$remote_result" in
           synced:*)

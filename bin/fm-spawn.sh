@@ -164,7 +164,8 @@
 #   and refuses otherwise rather than launching a second worker into somebody
 #   else's copy. bin/fm-wake-lib.sh's fm_treehouse_slot_claimable owns which
 #   existing claim may be replaced; only an ORPHAN may, its home still present and
-#   holding no record for the task it names, which is what an aborted spawn leaves.
+#   the state directory the claim records holding no record for the task it
+#   names, which is what an aborted spawn leaves.
 #   A spawn that aborts while it still holds the allocation lock drops its own
 #   claim; an abort after metadata publication has released that lock leaves the
 #   claim for the next spawn to read as the orphan it is.

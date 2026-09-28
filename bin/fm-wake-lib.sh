@@ -1497,8 +1497,9 @@ fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home> <state-dir>
 #   unsafe - a claim file exists but cannot be read as a claim
 # FM_TREEHOUSE_SLOT_OWNER_ID, FM_TREEHOUSE_SLOT_OWNER_HOME and
 # FM_TREEHOUSE_SLOT_OWNER_STATE carry the recorded claimant as evidence; the
-# state directory is empty on a claim written before claims recorded it. The home is reported, never matched here, so teardown's
-# release still recognizes a moved home's own claim. Deciding whether a slot may
+# state directory is empty on a claim written before claims recorded it. The
+# home is reported, never matched here, so teardown's release still recognizes a
+# moved home's own claim. Deciding whether a slot may
 # be HANDED to a task is stricter: task ids are unique only within one home and
 # several homes share one pool, so fm_treehouse_slot_claimable also requires the
 # claim's home to be the caller's, because sharing a working copy is worse than

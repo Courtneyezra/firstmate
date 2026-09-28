@@ -4232,7 +4232,7 @@ spawn_refuse_slot() {  # <exit-code> <message>
 # this same one, or another that is refused just the same.
 spawn_refuse_allocated_slot() {  # <reason>
   local free=0
-  fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" "$SPAWN_STARTED_EPOCH" "$WT" || free=$?
+  fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" "$WT" || free=$?
   if [ "$free" = 1 ]; then
     spawn_refuse_slot "$FM_POOL_EXHAUSTED_EXIT" "the Treehouse pool for '$PROJ_ABS' is exhausted: the only slot it could offer task $ID was $WT, but $1, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window $T is closed so its shell cannot stay in the slot"
   fi
@@ -4240,7 +4240,7 @@ spawn_refuse_allocated_slot() {  # <reason>
 }
 
 if [ "$RELAUNCH" -eq 1 ] && [ "$KIND" != secondmate ] &&
-  fm_treehouse_pool_slot "$PROJ_ABS" "$WT" && ! fm_treehouse_slot_claimable "$WT" "$ID" "$FM_HOME" "$PROJ_ABS" "$SPAWN_STARTED_EPOCH"; then
+  fm_treehouse_pool_slot "$PROJ_ABS" "$WT" && ! fm_treehouse_slot_claimable "$WT" "$ID" "$FM_HOME"; then
   # A relaunch reuses the copy this task's record names, and that record can be
   # older than the pool's memory of the slot: once the slot went back and was
   # handed to somebody else, relaunching into it would put a second worker in
@@ -4362,7 +4362,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     # occupied. A slot its rightful owner can use is worth more.
     SPAWN_SLOT_REFUSED=1
     SPAWN_POOL_FREE=0
-    fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" "$SPAWN_STARTED_EPOCH" || SPAWN_POOL_FREE=$?
+    fm_treehouse_pool_has_free_slot "$PROJ_ABS" "$ID" "$FM_HOME" || SPAWN_POOL_FREE=$?
     SPAWN_POOL_NEW_PROCESS=0
     fm_treehouse_pool_holds_new_process "$PROJ_ABS" "$SPAWN_STARTED_EPOCH" || SPAWN_POOL_NEW_PROCESS=$?
     if [ "$SPAWN_POOL_FREE" = 1 ] && [ "$SPAWN_POOL_NEW_PROCESS" = 1 ] &&
@@ -4397,7 +4397,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     # left to offer. Refuse it here, before a second worker is ever launched
     # into another task's working copy, and say with the exit code whether the
     # pool has another slot to ask for.
-    if ! fm_treehouse_slot_claimable "$WT" "$ID" "$FM_HOME" "$PROJ_ABS" "$SPAWN_STARTED_EPOCH"; then
+    if ! fm_treehouse_slot_claimable "$WT" "$ID" "$FM_HOME"; then
       spawn_refuse_allocated_slot "$FM_TREEHOUSE_SLOT_BUSY"
     fi
     # Belt to that claim's braces, and the one guard that needs no Firstmate
@@ -4412,7 +4412,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
       [ -n "$SPAWN_FOREIGN_PIDS" ]; then
       spawn_refuse_allocated_slot "it already held process ids $(printf '%s' "$SPAWN_FOREIGN_PIDS" | tr '\n' ' ' | sed 's/ $//') before this spawn started"
     fi
-    if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME" "$STATE" "$PROJ_ABS" "$SPAWN_STARTED_EPOCH"; then
+    if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME" "$STATE"; then
       echo "error: could not claim Treehouse pool slot $WT for task $ID; refusing to launch a worker whose slot cannot later be proved to be its own; inspect window $T" >&2
       exit 1
     fi

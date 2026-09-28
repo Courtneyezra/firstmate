@@ -1,0 +1,25 @@
+## live-a1's worker window gone and its record removed; the slot now carries a PRE-UPGRADE claim from the other home (no state= line)
+--- <FIX>/poolroot/.treehouse/liveproj-22afa8/1/.fm-slot-owner
+task=legacy-task
+home=<LAB2>
+[{"name":"1","path":"<FIX>/poolroot/.treehouse/liveproj-22afa8/1/liveproj","status":"available","flavor":"git","lease_id":"","lease_holder":"","leased_at":null,"processes":[]}]
+===== L1-legacy-idle
+$ cd /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CX1XDA6B395FRY2V2D8BP2 && FM_HOME=<LAB> bin/fm-spawn.sh live-l1 <FIX>/liveproj --scout --harness 'sleep 3600'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: the only slot it could offer task live-l1 was <FIX>/poolroot/.treehouse/liveproj-22afa8/1/liveproj, but task legacy-task of <LAB2> holds it through <FIX>/poolroot/.treehouse/liveproj-22afa8/1/.fm-slot-owner, which predates claims recording their owner's state directory, so whether that task is finished cannot be proved. Confirm task legacy-task of <LAB2> is finished - landed or torn down - then remove <FIX>/poolroot/.treehouse/liveproj-22afa8/1/.fm-slot-owner, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window primary:fm-live-l1 is closed so its shell cannot stay in the slot
+EXIT=75
+## claim after refusal:
+--- <FIX>/poolroot/.treehouse/liveproj-22afa8/1/.fm-slot-owner
+task=legacy-task
+home=<LAB2>
+## operator follows the refusal: confirms legacy-task is finished, removes the claim
+===== L2-after-operator-fix
+$ cd /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CX1XDA6B395FRY2V2D8BP2 && FM_HOME=<LAB> bin/fm-spawn.sh live-l1 <FIX>/liveproj --scout --harness 'sleep 3600'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+spawned live-l1 harness=sleep kind=scout window=primary:fm-live-l1 worktree=<FIX>/poolroot/.treehouse/liveproj-22afa8/1/liveproj
+EXIT=0
+## claim after spawn:
+--- <FIX>/poolroot/.treehouse/liveproj-22afa8/1/.fm-slot-owner
+task=live-l1
+home=<LAB>
+state=<LAB>/state

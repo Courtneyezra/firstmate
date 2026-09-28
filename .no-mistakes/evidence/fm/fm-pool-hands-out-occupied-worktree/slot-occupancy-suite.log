@@ -1,0 +1,23 @@
+ok - a pool slot another live task holds is refused, and its claim survives
+ok - a refused slot keeps no process of the refusing spawn in it
+ok - refusing the pool's only available slot reports exhaustion
+ok - a same-id claim from another home is refused rather than taken as this task's
+ok - a refusal with only other tasks' held slots left reports exhaustion
+ok - an orphaned slot claim is replaced rather than poisoning the slot
+ok - a live task whose records live outside its home's state directory keeps its slot
+ok - a legacy claim on an idle slot is refused, never replaced
+ok - a legacy claim on an occupied slot is refused with the action that clears it
+ok - a legacy claim is refused when the pool scan cannot be read
+ok - a legacy claim whose task is still live is refused
+ok - a task's own legacy claim is accepted and rewritten to be provable
+ok - a slot claim whose home is gone is refused rather than assumed stale
+ok - a pool slot holding a stray process is not accepted as free
+ok - a slot occupant whose age cannot be read is refused rather than ignored
+ok - a slot holding only this spawn's own process is accepted
+ok - an exhausted pool reports exhaustion rather than a generic refused spawn
+ok - a pool with a free slot is not misreported as exhausted
+ok - a pool below its size limit is not misreported as exhausted
+ok - a pool at its limit only because of this spawn's own slot is not exhausted
+ok - another worker's young process does not hide an exhausted pool
+ok - both allocation-deadline exits close the endpoint
+# all fm-spawn-pool-slot-occupancy tests passed

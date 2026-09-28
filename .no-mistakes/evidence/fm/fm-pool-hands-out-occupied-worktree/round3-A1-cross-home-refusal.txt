@@ -1,0 +1,21 @@
+## owner worker window killed (task record kept): slot is now processless but held
+## real treehouse status:
+[{"name":"1","path":"<FIX>/poolroot/.treehouse/liveproj-22afa8/1/liveproj","status":"available","flavor":"git","lease_id":"","lease_holder":"","leased_at":null,"processes":[]}]
+===== A1-other-home-spawn
+$ cd /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CX1XDA6B395FRY2V2D8BP2 && FM_HOME=<LAB> bin/fm-spawn.sh live-a1 <FIX>/liveproj --scout --harness 'sleep 3600'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: the only slot it could offer task live-a1 was <FIX>/poolroot/.treehouse/liveproj-22afa8/1/liveproj, but task sm-owner of <LAB2> still holds it, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window primary:fm-live-a1 is closed so its shell cannot stay in the slot
+EXIT=75
+===== A2-retry
+$ cd /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CX1XDA6B395FRY2V2D8BP2 && FM_HOME=<LAB> bin/fm-spawn.sh live-a1 <FIX>/liveproj --scout --harness 'sleep 3600'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <LAB>
+error: the Treehouse pool for '<FIX>/liveproj' is exhausted: the only slot it could offer task live-a1 was <FIX>/poolroot/.treehouse/liveproj-22afa8/1/liveproj, but task sm-owner of <LAB2> still holds it, and no other slot is available, so asking again would be handed that same slot. Land or tear down work to return a slot; retrying now cannot succeed. Window primary:fm-live-a1 is closed so its shell cannot stay in the slot
+EXIT=75
+## claim after refusals:
+--- <FIX>/poolroot/.treehouse/liveproj-22afa8/1/.fm-slot-owner
+task=sm-owner
+home=<LAB2>
+state=<LAB2>/state
+## live-a1 record published? none
+## lab windows:
+bash /home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3CX1XDA6B395FRY2V2D8BP2

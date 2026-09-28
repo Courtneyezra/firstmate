@@ -1,0 +1,352 @@
+== FIX-DEFAULT: root=/home/fleet-max/.no-mistakes/worktrees/c7ade90a109c/01M3KP07B3F9QSPN8046HF3WSV grace=300s checks=11x29s hang=no watcher_pid=722479
+t=  1s beacon_age=  0s guard=HEALTHY running_check=-
+t=  2s beacon_age=  1s guard=HEALTHY running_check=-
+t=  3s beacon_age=  2s guard=HEALTHY running_check=-
+t=  4s beacon_age=  3s guard=HEALTHY running_check=-
+t=  5s beacon_age=  5s guard=HEALTHY running_check=-
+t=  6s beacon_age=  6s guard=HEALTHY running_check=-
+t=  7s beacon_age=  7s guard=HEALTHY running_check=-
+t=  8s beacon_age=  8s guard=HEALTHY running_check=-
+t=  9s beacon_age=  9s guard=HEALTHY running_check=-
+t= 10s beacon_age= 11s guard=HEALTHY running_check=-
+t= 11s beacon_age= 12s guard=HEALTHY running_check=-
+t= 12s beacon_age= 13s guard=HEALTHY running_check=-
+t= 13s beacon_age= 14s guard=HEALTHY running_check=-
+t= 14s beacon_age= 15s guard=HEALTHY running_check=-
+t= 15s beacon_age= 16s guard=HEALTHY running_check=-
+t= 16s beacon_age= 18s guard=HEALTHY running_check=-
+t= 17s beacon_age= 19s guard=HEALTHY running_check=-
+t= 18s beacon_age= 20s guard=HEALTHY running_check=-
+t= 19s beacon_age= 21s guard=HEALTHY running_check=-
+t= 20s beacon_age= 22s guard=HEALTHY running_check=-
+t= 21s beacon_age= 24s guard=HEALTHY running_check=-
+t= 22s beacon_age= 25s guard=HEALTHY running_check=-
+t= 23s beacon_age= 26s guard=HEALTHY running_check=-
+t= 24s beacon_age= 27s guard=HEALTHY running_check=-
+t= 25s beacon_age= 28s guard=HEALTHY running_check=-
+t= 26s beacon_age= 29s guard=HEALTHY running_check=-
+t= 27s beacon_age=  1s guard=HEALTHY running_check=-
+t= 28s beacon_age=  2s guard=HEALTHY running_check=-
+t= 29s beacon_age=  3s guard=HEALTHY running_check=-
+t= 30s beacon_age=  4s guard=HEALTHY running_check=-
+t= 31s beacon_age=  5s guard=HEALTHY running_check=-
+t= 32s beacon_age=  7s guard=HEALTHY running_check=-
+t= 33s beacon_age=  8s guard=HEALTHY running_check=-
+t= 34s beacon_age=  9s guard=HEALTHY running_check=-
+t= 35s beacon_age= 10s guard=HEALTHY running_check=-
+t= 36s beacon_age= 11s guard=HEALTHY running_check=-
+t= 37s beacon_age= 13s guard=HEALTHY running_check=-
+t= 38s beacon_age= 14s guard=HEALTHY running_check=-
+t= 39s beacon_age= 15s guard=HEALTHY running_check=-
+t= 40s beacon_age= 16s guard=HEALTHY running_check=-
+t= 41s beacon_age= 17s guard=HEALTHY running_check=-
+t= 42s beacon_age= 18s guard=HEALTHY running_check=-
+t= 43s beacon_age= 20s guard=HEALTHY running_check=-
+t= 44s beacon_age= 21s guard=HEALTHY running_check=-
+t= 45s beacon_age= 22s guard=HEALTHY running_check=-
+t= 46s beacon_age= 23s guard=HEALTHY running_check=-
+t= 47s beacon_age= 24s guard=HEALTHY running_check=-
+t= 48s beacon_age= 25s guard=HEALTHY running_check=-
+t= 49s beacon_age= 27s guard=HEALTHY running_check=-
+t= 50s beacon_age= 28s guard=HEALTHY running_check=-
+t= 51s beacon_age= 29s guard=HEALTHY running_check=-
+t= 52s beacon_age=  1s guard=HEALTHY running_check=-
+t= 53s beacon_age=  2s guard=HEALTHY running_check=-
+t= 54s beacon_age=  4s guard=HEALTHY running_check=-
+t= 55s beacon_age=  5s guard=HEALTHY running_check=-
+t= 56s beacon_age=  6s guard=HEALTHY running_check=-
+t= 57s beacon_age=  7s guard=HEALTHY running_check=-
+t= 58s beacon_age=  8s guard=HEALTHY running_check=-
+t= 59s beacon_age=  9s guard=HEALTHY running_check=-
+t= 60s beacon_age= 11s guard=HEALTHY running_check=-
+t= 61s beacon_age= 12s guard=HEALTHY running_check=-
+t= 62s beacon_age= 13s guard=HEALTHY running_check=-
+t= 63s beacon_age= 14s guard=HEALTHY running_check=-
+t= 64s beacon_age= 15s guard=HEALTHY running_check=-
+t= 65s beacon_age= 17s guard=HEALTHY running_check=-
+t= 66s beacon_age= 18s guard=HEALTHY running_check=-
+t= 67s beacon_age= 19s guard=HEALTHY running_check=-
+t= 68s beacon_age= 20s guard=HEALTHY running_check=-
+t= 69s beacon_age= 21s guard=HEALTHY running_check=-
+t= 70s beacon_age= 22s guard=HEALTHY running_check=-
+t= 71s beacon_age= 24s guard=HEALTHY running_check=-
+t= 72s beacon_age= 25s guard=HEALTHY running_check=-
+t= 73s beacon_age= 26s guard=HEALTHY running_check=-
+t= 74s beacon_age= 27s guard=HEALTHY running_check=-
+t= 75s beacon_age= 28s guard=HEALTHY running_check=-
+t= 76s beacon_age= 30s guard=HEALTHY running_check=-
+t= 77s beacon_age=  1s guard=HEALTHY running_check=-
+t= 78s beacon_age=  2s guard=HEALTHY running_check=-
+t= 79s beacon_age=  3s guard=HEALTHY running_check=-
+t= 80s beacon_age=  4s guard=HEALTHY running_check=-
+t= 81s beacon_age=  6s guard=HEALTHY running_check=-
+t= 82s beacon_age=  7s guard=HEALTHY running_check=-
+t= 83s beacon_age=  8s guard=HEALTHY running_check=-
+t= 84s beacon_age=  9s guard=HEALTHY running_check=-
+t= 85s beacon_age= 10s guard=HEALTHY running_check=-
+t= 86s beacon_age= 11s guard=HEALTHY running_check=-
+t= 87s beacon_age= 13s guard=HEALTHY running_check=-
+t= 88s beacon_age= 14s guard=HEALTHY running_check=-
+t= 89s beacon_age= 15s guard=HEALTHY running_check=-
+t= 90s beacon_age= 16s guard=HEALTHY running_check=-
+t= 91s beacon_age= 17s guard=HEALTHY running_check=-
+t= 92s beacon_age= 19s guard=HEALTHY running_check=-
+t= 93s beacon_age= 20s guard=HEALTHY running_check=-
+t= 94s beacon_age= 21s guard=HEALTHY running_check=-
+t= 95s beacon_age= 22s guard=HEALTHY running_check=-
+t= 96s beacon_age= 23s guard=HEALTHY running_check=-
+t= 97s beacon_age= 24s guard=HEALTHY running_check=-
+t= 98s beacon_age= 26s guard=HEALTHY running_check=-
+t= 99s beacon_age= 27s guard=HEALTHY running_check=-
+t=100s beacon_age= 28s guard=HEALTHY running_check=-
+t=101s beacon_age= 29s guard=HEALTHY running_check=-
+t=102s beacon_age=  1s guard=HEALTHY running_check=-
+t=103s beacon_age=  2s guard=HEALTHY running_check=-
+t=104s beacon_age=  4s guard=HEALTHY running_check=-
+t=105s beacon_age=  5s guard=HEALTHY running_check=-
+t=106s beacon_age=  6s guard=HEALTHY running_check=-
+t=107s beacon_age=  7s guard=HEALTHY running_check=-
+t=108s beacon_age=  8s guard=HEALTHY running_check=-
+t=109s beacon_age=  9s guard=HEALTHY running_check=-
+t=110s beacon_age= 11s guard=HEALTHY running_check=-
+t=111s beacon_age= 12s guard=HEALTHY running_check=-
+t=112s beacon_age= 13s guard=HEALTHY running_check=-
+t=113s beacon_age= 14s guard=HEALTHY running_check=-
+t=114s beacon_age= 15s guard=HEALTHY running_check=-
+t=115s beacon_age= 17s guard=HEALTHY running_check=-
+t=116s beacon_age= 18s guard=HEALTHY running_check=-
+t=117s beacon_age= 19s guard=HEALTHY running_check=-
+t=118s beacon_age= 20s guard=HEALTHY running_check=-
+t=119s beacon_age= 21s guard=HEALTHY running_check=-
+t=120s beacon_age= 22s guard=HEALTHY running_check=-
+t=121s beacon_age= 24s guard=HEALTHY running_check=-
+t=122s beacon_age= 25s guard=HEALTHY running_check=-
+t=123s beacon_age= 26s guard=HEALTHY running_check=-
+t=124s beacon_age= 27s guard=HEALTHY running_check=-
+t=125s beacon_age= 28s guard=HEALTHY running_check=-
+t=126s beacon_age= 30s guard=HEALTHY running_check=-
+t=127s beacon_age=  1s guard=HEALTHY running_check=-
+t=128s beacon_age=  2s guard=HEALTHY running_check=-
+t=129s beacon_age=  3s guard=HEALTHY running_check=-
+t=130s beacon_age=  4s guard=HEALTHY running_check=-
+t=131s beacon_age=  5s guard=HEALTHY running_check=-
+t=132s beacon_age=  7s guard=HEALTHY running_check=-
+t=133s beacon_age=  8s guard=HEALTHY running_check=-
+t=134s beacon_age=  9s guard=HEALTHY running_check=-
+t=135s beacon_age= 10s guard=HEALTHY running_check=-
+t=136s beacon_age= 11s guard=HEALTHY running_check=-
+t=137s beacon_age= 13s guard=HEALTHY running_check=-
+t=138s beacon_age= 14s guard=HEALTHY running_check=-
+t=139s beacon_age= 15s guard=HEALTHY running_check=-
+t=140s beacon_age= 16s guard=HEALTHY running_check=-
+t=141s beacon_age= 17s guard=HEALTHY running_check=-
+t=142s beacon_age= 18s guard=HEALTHY running_check=-
+t=143s beacon_age= 20s guard=HEALTHY running_check=-
+t=144s beacon_age= 21s guard=HEALTHY running_check=-
+t=145s beacon_age= 22s guard=HEALTHY running_check=-
+t=146s beacon_age= 23s guard=HEALTHY running_check=-
+t=147s beacon_age= 24s guard=HEALTHY running_check=-
+t=148s beacon_age= 26s guard=HEALTHY running_check=-
+t=149s beacon_age= 27s guard=HEALTHY running_check=-
+t=150s beacon_age= 28s guard=HEALTHY running_check=-
+t=151s beacon_age=  0s guard=HEALTHY running_check=-
+t=152s beacon_age=  1s guard=HEALTHY running_check=-
+t=153s beacon_age=  3s guard=HEALTHY running_check=-
+t=154s beacon_age=  4s guard=HEALTHY running_check=-
+t=155s beacon_age=  5s guard=HEALTHY running_check=-
+t=156s beacon_age=  6s guard=HEALTHY running_check=-
+t=157s beacon_age=  7s guard=HEALTHY running_check=-
+t=158s beacon_age=  9s guard=HEALTHY running_check=-
+t=159s beacon_age= 10s guard=HEALTHY running_check=-
+t=160s beacon_age= 11s guard=HEALTHY running_check=-
+t=161s beacon_age= 12s guard=HEALTHY running_check=-
+t=162s beacon_age= 13s guard=HEALTHY running_check=-
+t=163s beacon_age= 15s guard=HEALTHY running_check=-
+t=164s beacon_age= 16s guard=HEALTHY running_check=-
+t=165s beacon_age= 17s guard=HEALTHY running_check=-
+t=166s beacon_age= 18s guard=HEALTHY running_check=-
+t=167s beacon_age= 19s guard=HEALTHY running_check=-
+t=168s beacon_age= 20s guard=HEALTHY running_check=-
+t=169s beacon_age= 22s guard=HEALTHY running_check=-
+t=170s beacon_age= 23s guard=HEALTHY running_check=-
+t=171s beacon_age= 24s guard=HEALTHY running_check=-
+t=172s beacon_age= 25s guard=HEALTHY running_check=-
+t=173s beacon_age= 26s guard=HEALTHY running_check=-
+t=174s beacon_age= 27s guard=HEALTHY running_check=-
+t=175s beacon_age= 29s guard=HEALTHY running_check=-
+t=176s beacon_age=  0s guard=HEALTHY running_check=-
+t=177s beacon_age=  1s guard=HEALTHY running_check=-
+t=178s beacon_age=  2s guard=HEALTHY running_check=-
+t=179s beacon_age=  3s guard=HEALTHY running_check=-
+t=180s beacon_age=  5s guard=HEALTHY running_check=-
+t=181s beacon_age=  6s guard=HEALTHY running_check=-
+t=182s beacon_age=  7s guard=HEALTHY running_check=-
+t=183s beacon_age=  8s guard=HEALTHY running_check=-
+t=184s beacon_age=  9s guard=HEALTHY running_check=-
+t=185s beacon_age= 11s guard=HEALTHY running_check=-
+t=186s beacon_age= 12s guard=HEALTHY running_check=-
+t=187s beacon_age= 13s guard=HEALTHY running_check=-
+t=188s beacon_age= 14s guard=HEALTHY running_check=-
+t=189s beacon_age= 15s guard=HEALTHY running_check=-
+t=190s beacon_age= 17s guard=HEALTHY running_check=-
+t=191s beacon_age= 18s guard=HEALTHY running_check=-
+t=192s beacon_age= 19s guard=HEALTHY running_check=-
+t=193s beacon_age= 20s guard=HEALTHY running_check=-
+t=194s beacon_age= 21s guard=HEALTHY running_check=-
+t=195s beacon_age= 23s guard=HEALTHY running_check=-
+t=196s beacon_age= 24s guard=HEALTHY running_check=-
+t=197s beacon_age= 25s guard=HEALTHY running_check=-
+t=198s beacon_age= 26s guard=HEALTHY running_check=-
+t=199s beacon_age= 27s guard=HEALTHY running_check=-
+t=200s beacon_age= 29s guard=HEALTHY running_check=-
+t=201s beacon_age=  1s guard=HEALTHY running_check=-
+t=202s beacon_age=  2s guard=HEALTHY running_check=-
+t=203s beacon_age=  3s guard=HEALTHY running_check=-
+t=204s beacon_age=  4s guard=HEALTHY running_check=-
+t=205s beacon_age=  5s guard=HEALTHY running_check=-
+t=206s beacon_age=  7s guard=HEALTHY running_check=-
+t=207s beacon_age=  8s guard=HEALTHY running_check=-
+t=208s beacon_age=  9s guard=HEALTHY running_check=-
+t=209s beacon_age= 10s guard=HEALTHY running_check=-
+t=210s beacon_age= 11s guard=HEALTHY running_check=-
+t=211s beacon_age= 13s guard=HEALTHY running_check=-
+t=212s beacon_age= 14s guard=HEALTHY running_check=-
+t=213s beacon_age= 15s guard=HEALTHY running_check=-
+t=214s beacon_age= 16s guard=HEALTHY running_check=-
+t=215s beacon_age= 17s guard=HEALTHY running_check=-
+t=216s beacon_age= 18s guard=HEALTHY running_check=-
+t=217s beacon_age= 20s guard=HEALTHY running_check=-
+t=218s beacon_age= 21s guard=HEALTHY running_check=-
+t=219s beacon_age= 22s guard=HEALTHY running_check=-
+t=220s beacon_age= 23s guard=HEALTHY running_check=-
+t=221s beacon_age= 24s guard=HEALTHY running_check=-
+t=222s beacon_age= 26s guard=HEALTHY running_check=-
+t=223s beacon_age= 27s guard=HEALTHY running_check=-
+t=224s beacon_age= 28s guard=HEALTHY running_check=-
+t=225s beacon_age= 29s guard=HEALTHY running_check=-
+t=226s beacon_age=  1s guard=HEALTHY running_check=-
+t=227s beacon_age=  2s guard=HEALTHY running_check=-
+t=228s beacon_age=  4s guard=HEALTHY running_check=-
+t=229s beacon_age=  5s guard=HEALTHY running_check=-
+t=230s beacon_age=  6s guard=HEALTHY running_check=-
+t=231s beacon_age=  7s guard=HEALTHY running_check=-
+t=232s beacon_age=  8s guard=HEALTHY running_check=-
+t=233s beacon_age= 10s guard=HEALTHY running_check=-
+t=234s beacon_age= 11s guard=HEALTHY running_check=-
+t=235s beacon_age= 12s guard=HEALTHY running_check=-
+t=236s beacon_age= 13s guard=HEALTHY running_check=-
+t=237s beacon_age= 14s guard=HEALTHY running_check=-
+t=238s beacon_age= 16s guard=HEALTHY running_check=-
+t=239s beacon_age= 17s guard=HEALTHY running_check=-
+t=240s beacon_age= 18s guard=HEALTHY running_check=-
+t=241s beacon_age= 19s guard=HEALTHY running_check=-
+t=242s beacon_age= 20s guard=HEALTHY running_check=-
+t=243s beacon_age= 22s guard=HEALTHY running_check=-
+t=244s beacon_age= 23s guard=HEALTHY running_check=-
+t=245s beacon_age= 24s guard=HEALTHY running_check=-
+t=246s beacon_age= 25s guard=HEALTHY running_check=-
+t=247s beacon_age= 26s guard=HEALTHY running_check=-
+t=248s beacon_age= 27s guard=HEALTHY running_check=-
+t=249s beacon_age= 29s guard=HEALTHY running_check=-
+t=250s beacon_age= 30s guard=HEALTHY running_check=-
+t=251s beacon_age=  1s guard=HEALTHY running_check=-
+t=252s beacon_age=  2s guard=HEALTHY running_check=-
+t=253s beacon_age=  3s guard=HEALTHY running_check=-
+t=254s beacon_age=  5s guard=HEALTHY running_check=-
+t=255s beacon_age=  6s guard=HEALTHY running_check=-
+t=256s beacon_age=  7s guard=HEALTHY running_check=-
+t=257s beacon_age=  8s guard=HEALTHY running_check=-
+t=258s beacon_age=  9s guard=HEALTHY running_check=-
+t=259s beacon_age= 11s guard=HEALTHY running_check=-
+t=260s beacon_age= 12s guard=HEALTHY running_check=-
+t=261s beacon_age= 13s guard=HEALTHY running_check=-
+t=262s beacon_age= 14s guard=HEALTHY running_check=-
+t=263s beacon_age= 15s guard=HEALTHY running_check=-
+t=264s beacon_age= 16s guard=HEALTHY running_check=-
+t=265s beacon_age= 18s guard=HEALTHY running_check=-
+t=266s beacon_age= 19s guard=HEALTHY running_check=-
+t=267s beacon_age= 20s guard=HEALTHY running_check=-
+t=268s beacon_age= 21s guard=HEALTHY running_check=-
+t=269s beacon_age= 22s guard=HEALTHY running_check=-
+t=270s beacon_age= 24s guard=HEALTHY running_check=-
+t=271s beacon_age= 25s guard=HEALTHY running_check=-
+t=272s beacon_age= 26s guard=HEALTHY running_check=-
+t=273s beacon_age= 27s guard=HEALTHY running_check=-
+t=274s beacon_age= 28s guard=HEALTHY running_check=-
+t=275s beacon_age= 29s guard=HEALTHY running_check=-
+t=276s beacon_age=  2s guard=HEALTHY running_check=-
+t=277s beacon_age=  3s guard=HEALTHY running_check=-
+t=278s beacon_age=  4s guard=HEALTHY running_check=-
+t=279s beacon_age=  5s guard=HEALTHY running_check=-
+t=280s beacon_age=  6s guard=HEALTHY running_check=-
+t=281s beacon_age=  8s guard=HEALTHY running_check=-
+t=282s beacon_age=  9s guard=HEALTHY running_check=-
+t=283s beacon_age= 10s guard=HEALTHY running_check=-
+t=284s beacon_age= 11s guard=HEALTHY running_check=-
+t=285s beacon_age= 12s guard=HEALTHY running_check=-
+t=286s beacon_age= 13s guard=HEALTHY running_check=-
+t=287s beacon_age= 15s guard=HEALTHY running_check=-
+t=288s beacon_age=  1s guard=HEALTHY running_check=-
+t=289s beacon_age=  2s guard=HEALTHY running_check=-
+t=290s beacon_age=  3s guard=HEALTHY running_check=-
+t=291s beacon_age=  4s guard=HEALTHY running_check=-
+t=292s beacon_age=  6s guard=HEALTHY running_check=-
+t=293s beacon_age=  7s guard=HEALTHY running_check=-
+t=294s beacon_age=  8s guard=HEALTHY running_check=-
+t=295s beacon_age=  9s guard=HEALTHY running_check=-
+t=296s beacon_age= 10s guard=HEALTHY running_check=-
+t=297s beacon_age= 11s guard=HEALTHY running_check=-
+t=298s beacon_age= 13s guard=HEALTHY running_check=-
+t=299s beacon_age= 14s guard=HEALTHY running_check=-
+t=300s beacon_age= 15s guard=HEALTHY running_check=-
+t=301s beacon_age= 16s guard=HEALTHY running_check=-
+t=302s beacon_age= 17s guard=HEALTHY running_check=-
+t=303s beacon_age= 19s guard=HEALTHY running_check=-
+t=304s beacon_age= 20s guard=HEALTHY running_check=-
+t=305s beacon_age= 21s guard=HEALTHY running_check=-
+t=306s beacon_age= 22s guard=HEALTHY running_check=-
+t=307s beacon_age= 24s guard=HEALTHY running_check=-
+t=308s beacon_age= 25s guard=HEALTHY running_check=-
+t=309s beacon_age= 26s guard=HEALTHY running_check=-
+t=310s beacon_age= 27s guard=HEALTHY running_check=-
+t=311s beacon_age= 28s guard=HEALTHY running_check=-
+t=312s beacon_age= 29s guard=HEALTHY running_check=-
+t=313s beacon_age=  0s guard=HEALTHY running_check=-
+t=314s beacon_age=  1s guard=HEALTHY running_check=-
+t=315s beacon_age=  2s guard=HEALTHY running_check=-
+t=316s beacon_age=  3s guard=HEALTHY running_check=-
+t=317s beacon_age=  4s guard=HEALTHY running_check=-
+t=318s beacon_age=  5s guard=HEALTHY running_check=-
+t=319s beacon_age=  7s guard=HEALTHY running_check=-
+t=320s beacon_age=  8s guard=HEALTHY running_check=-
+t=321s beacon_age=  9s guard=HEALTHY running_check=-
+t=322s beacon_age= 10s guard=HEALTHY running_check=-
+t=323s beacon_age= 12s guard=HEALTHY running_check=-
+t=324s beacon_age= 13s guard=HEALTHY running_check=-
+t=325s beacon_age= 14s guard=HEALTHY running_check=-
+t=326s beacon_age= 15s guard=HEALTHY running_check=-
+t=327s beacon_age= 16s guard=HEALTHY running_check=-
+t=328s beacon_age= 17s guard=HEALTHY running_check=-
+t=329s beacon_age= 19s guard=HEALTHY running_check=-
+t=330s beacon_age= 20s guard=HEALTHY running_check=-
+t=331s beacon_age= 21s guard=HEALTHY running_check=-
+t=332s beacon_age= 22s guard=HEALTHY running_check=-
+t=333s beacon_age= 23s guard=HEALTHY running_check=-
+t=334s beacon_age= 25s guard=HEALTHY running_check=-
+t=335s beacon_age= 26s guard=HEALTHY running_check=-
+t=336s beacon_age= 27s guard=HEALTHY running_check=-
+t=337s beacon_age= 28s guard=HEALTHY running_check=-
+t=338s beacon_age=  0s guard=HEALTHY running_check=-
+t=339s beacon_age=  2s guard=HEALTHY running_check=-
+t=340s beacon_age=  3s guard=HEALTHY running_check=-
+t=341s beacon_age=  4s guard=HEALTHY running_check=-
+t=342s beacon_age=  5s guard=HEALTHY running_check=-
+t=343s beacon_age=  6s guard=HEALTHY running_check=-
+t=344s beacon_age=  7s guard=HEALTHY running_check=-
+t=345s beacon_age=  9s guard=HEALTHY running_check=-
+t=346s beacon_age= 10s guard=HEALTHY running_check=-
+t=347s beacon_age= 11s guard=HEALTHY running_check=-
+t=348s beacon_age= 12s guard=HEALTHY running_check=-
+t=349s beacon_age= 13s guard=HEALTHY running_check=-
+t=350s beacon_age= 15s guard=HEALTHY running_check=-
+== FIX-DEFAULT SUMMARY: max_beacon_age=30s grace=300s down_samples=0/350

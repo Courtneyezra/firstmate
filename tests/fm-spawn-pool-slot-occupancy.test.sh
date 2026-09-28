@@ -144,11 +144,13 @@ JSON
   export FM_FAKE_TREEHOUSE_STATUS="$CASE_DIR/pool-status.json"
 }
 
-# claim_slot <task-id> <home> writes the slot claim a previous holder left.
+# claim_slot <task-id> <home> writes the slot claim a previous holder left,
+# recording <home>/state as the directory holding its task records.
 claim_slot() {
   cat > "$(dirname "$SLOT_DIR")/.fm-slot-owner" <<CLAIM
 task=$1
 home=$2
+state=$2/state
 CLAIM
 }
 
@@ -229,6 +231,67 @@ test_orphan_claim_is_replaced() {
   assert_grep "task=$id" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
     "the spawn did not take over the orphaned claim"
   pass "an orphaned slot claim is replaced rather than poisoning the slot"
+}
+
+# A home may keep its task records outside <home>/state, as secondmate homes do
+# through FM_STATE_OVERRIDE. The live task's claim must still be read as held,
+# not as an orphan, or the next spawn launches into its working copy.
+test_live_task_with_state_outside_its_home_keeps_its_slot() {
+  local rec id owner_id owner_state out status
+  id='pool-state-override-a9'
+  owner_id='pool-state-override-owner'
+  rec=$(make_case state-override "$id")
+  read_case_record "$rec"
+  owner_state="$CASE_DIR/owner-state"
+  mkdir -p "$OTHER_HOME/data" "$OTHER_HOME/projects" "$OTHER_HOME/config" "$owner_state"
+  printf 'codex\n' > "$OTHER_HOME/config/crew-harness"
+  fm_test_spawn_brief "$OTHER_HOME" "$owner_id"
+  touch "$owner_state/.last-watcher-beat"
+  write_pool_status --spare available
+
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$OTHER_HOME" HOME="$OTHER_HOME/user-home" CLAUDE_CONFIG_DIR='' \
+    FM_STATE_OVERRIDE="$owner_state" FM_DATA_OVERRIDE="$OTHER_HOME/data" \
+    FM_PROJECTS_OVERRIDE="$OTHER_HOME/projects" FM_CONFIG_OVERRIDE="$OTHER_HOME/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$SLOT_DIR" TMUX="${TMUX:-fake,1,0}" \
+    PATH="$FAKEBIN_DIR:$PATH" "$ROOT/bin/fm-spawn.sh" "$owner_id" "$PROJECT_DIR" --scout 2>&1)
+  status=$?
+  expect_code 0 "$status" "the owner's spawn with an overridden state directory must succeed"$'\n'"$out"
+  [ -e "$owner_state/$owner_id.meta" ] || fail "the owner's record did not land in its overridden state directory"
+  [ ! -e "$OTHER_HOME/state/$owner_id.meta" ] || fail "the owner's record landed under its home's default state directory"
+
+  out=$(run_pool_spawn "$id")
+  status=$?
+  expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
+    "a live task whose records live outside its home's state directory still holds its slot"$'\n'"$out"
+  assert_contains "$out" "$owner_id" \
+    "the refusal did not name the task that still holds the slot"
+  assert_not_launched "$id" "a slot held by a task with an overridden state directory"
+  assert_grep "task=$owner_id" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
+    "the second spawn replaced a live task's claim as if it were an orphan"
+  pass "a live task whose records live outside its home's state directory keeps its slot"
+}
+
+# A claim written before claims recorded a state directory cannot be proved
+# stale: its owner may keep records anywhere, so an absent record under
+# <home>/state proves nothing and the slot stays refused.
+test_legacy_claim_without_state_is_refused() {
+  local rec id out status
+  id='pool-legacy-claim-a10'
+  rec=$(make_case legacy-claim "$id")
+  read_case_record "$rec"
+  write_pool_status --spare available
+  printf 'task=legacy-task\nhome=%s\n' "$OTHER_HOME" > "$(dirname "$SLOT_DIR")/.fm-slot-owner"
+
+  out=$(run_pool_spawn "$id")
+  status=$?
+  expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
+    "a claim recording no state directory cannot be proved stale"$'\n'"$out"
+  assert_contains "$out" "records no state directory" \
+    "the refusal did not say why the legacy claim could not be proved stale"
+  assert_not_launched "$id" "a legacy claim"
+  assert_grep "task=legacy-task" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
+    "the refused spawn overwrote a legacy claim"
+  pass "a legacy slot claim with no recorded state directory is refused, not replaced"
 }
 
 # Claimable means proved free, never merely not-proved-busy: a home that is not
@@ -564,6 +627,8 @@ test_refused_only_slot_reports_exhaustion
 test_same_task_id_from_another_home_is_refused
 test_refusal_with_only_held_slots_left_reports_exhaustion
 test_orphan_claim_is_replaced
+test_live_task_with_state_outside_its_home_keeps_its_slot
+test_legacy_claim_without_state_is_refused
 test_claim_whose_home_is_absent_is_refused
 test_slot_holding_a_stray_process_is_refused
 test_slot_holding_an_unreadable_process_is_refused

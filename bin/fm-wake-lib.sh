@@ -1462,9 +1462,15 @@ fm_treehouse_slot_owner_marker() {  # <worktree>
 # fm_treehouse_slot_claimable owns which existing claim may be replaced; a
 # refusal leaves the previous claim exactly as it was and sets
 # FM_TREEHOUSE_SLOT_BUSY to the reason, so the caller can report it.
-fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home>
-  local worktree=$1 id=$2 home=$3 marker tmp
+# The claim records the task's resolved state directory beside its home,
+# because a home may keep its task records outside <home>/state
+# (FM_STATE_OVERRIDE, as secondmate homes do), and a reader that looked only
+# under <home>/state would find no record for a live task and take its claim
+# for an orphan.
+fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home> <state-dir>
+  local worktree=$1 id=$2 home=$3 state=$4 marker tmp
   [ -n "$id" ] || return 1
+  state=$(CDPATH='' cd -- "$state" 2>/dev/null && pwd -P) || return 1
   fm_treehouse_slot_claimable "$worktree" "$id" "$home" || return 1
   marker=$(fm_treehouse_slot_owner_marker "$worktree") || return 1
   # Only a plain claim file may be replaced: renaming onto a directory would
@@ -1478,6 +1484,7 @@ fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home>
   {
     printf 'task=%s\n' "$id"
     printf 'home=%s\n' "$home"
+    printf 'state=%s\n' "$state"
   } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$marker" 2>/dev/null || { rm -f "$tmp"; return 1; }
 }
@@ -1488,18 +1495,20 @@ fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home>
 #   other  - the claim names a different task, so the slot was reassigned
 #   absent - no claim: the slot was taken before claims existed, or returned since
 #   unsafe - a claim file exists but cannot be read as a claim
-# FM_TREEHOUSE_SLOT_OWNER_ID and FM_TREEHOUSE_SLOT_OWNER_HOME carry the recorded
-# claimant as evidence. The home is reported, never matched here, so teardown's
+# FM_TREEHOUSE_SLOT_OWNER_ID, FM_TREEHOUSE_SLOT_OWNER_HOME and
+# FM_TREEHOUSE_SLOT_OWNER_STATE carry the recorded claimant as evidence; the
+# state directory is empty on a claim written before claims recorded it. The home is reported, never matched here, so teardown's
 # release still recognizes a moved home's own claim. Deciding whether a slot may
 # be HANDED to a task is stricter: task ids are unique only within one home and
 # several homes share one pool, so fm_treehouse_slot_claimable also requires the
 # claim's home to be the caller's, because sharing a working copy is worse than
 # refusing one.
 fm_treehouse_slot_owner_state() {  # <worktree> <task-id>
-  local worktree=$1 id=$2 marker line owner_id='' owner_home=''
+  local worktree=$1 id=$2 marker line owner_id='' owner_home='' owner_state=''
   FM_TREEHOUSE_SLOT_OWNER=unsafe
   FM_TREEHOUSE_SLOT_OWNER_ID=
   FM_TREEHOUSE_SLOT_OWNER_HOME=
+  FM_TREEHOUSE_SLOT_OWNER_STATE=
   marker=$(fm_treehouse_slot_owner_marker "$worktree") || return 0
   if [ ! -e "$marker" ] && [ ! -L "$marker" ]; then
     FM_TREEHOUSE_SLOT_OWNER=absent
@@ -1510,6 +1519,7 @@ fm_treehouse_slot_owner_state() {  # <worktree> <task-id>
     case "$line" in
       task=*) owner_id=${line#task=} ;;
       home=*) owner_home=${line#home=} ;;
+      state=*) owner_state=${line#state=} ;;
     esac
   done < "$marker" || return 0
   [ -n "$owner_id" ] || return 0
@@ -1517,6 +1527,8 @@ fm_treehouse_slot_owner_state() {  # <worktree> <task-id>
   FM_TREEHOUSE_SLOT_OWNER_ID=$owner_id
   # shellcheck disable=SC2034 # Output globals, read by the sourcing caller.
   FM_TREEHOUSE_SLOT_OWNER_HOME=$owner_home
+  # shellcheck disable=SC2034 # Output globals, read by the sourcing caller.
+  FM_TREEHOUSE_SLOT_OWNER_STATE=$owner_state
   if [ "$owner_id" = "$id" ]; then
     FM_TREEHOUSE_SLOT_OWNER=mine
   else
@@ -1568,14 +1580,18 @@ FM_POOL_BAD_SLOT_EXIT=76
 # inspected all refuse. A claim is this task's own only when it names both this
 # task id AND this home, compared physically: ids are unique only within one
 # home, and several homes share one pool. The one claim that may be replaced is
-# an ORPHAN - its home is still here and holds no record for the task it names -
-# which is exactly what a spawn that aborted after claiming its slot leaves.
+# an ORPHAN - its home is still here and the state directory the claim records
+# holds no record for the task it names - which is exactly what a spawn that
+# aborted after claiming its slot leaves. A claim that records no state
+# directory predates that field; its owner may keep records outside
+# <home>/state, so it can be proved held there but never proved stale, and it
+# refuses until its owner's next spawn or teardown rewrites or releases it.
 # FM_TREEHOUSE_SLOT_BUSY carries the refusal reason, including the claim's own
 # path, so the caller can name the file an operator would inspect; a claim that
 # names this task id from another home names both homes, so a home that moved
 # reads as that rather than as a mystery.
 fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home>
-  local worktree=$1 id=$2 home=$3 owner_home owner_real home_real marker home_note=''
+  local worktree=$1 id=$2 home=$3 owner_home owner_state owner_real home_real marker home_note=''
   FM_TREEHOUSE_SLOT_BUSY=
   fm_treehouse_slot_owner_state "$worktree" "$id"
   marker=$(fm_treehouse_slot_owner_marker "$worktree" 2>/dev/null || true)
@@ -1603,10 +1619,20 @@ fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home>
   if [ "$FM_TREEHOUSE_SLOT_OWNER" = mine ] && [ "$owner_real" = "$home_real" ]; then
     return 0
   fi
-  if [ -e "$owner_home/state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ] ||
-    [ -L "$owner_home/state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ]; then
+  owner_state=${FM_TREEHOUSE_SLOT_OWNER_STATE:-$owner_home/state}
+  if [ -e "$owner_state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ] ||
+    [ -L "$owner_state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ]; then
     # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
     FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home still holds it$home_note"
+    return 1
+  fi
+  if [ -z "$FM_TREEHOUSE_SLOT_OWNER_STATE" ]; then
+    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home holds it and ${marker:-its claim} records no state directory to prove the claim stale$home_note"
+    return 1
+  fi
+  if [ ! -d "$owner_state" ]; then
+    # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
+    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home holds it and its state directory $owner_state is not here to prove the claim stale$home_note"
     return 1
   fi
   return 0

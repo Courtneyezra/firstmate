@@ -4412,7 +4412,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
       [ -n "$SPAWN_FOREIGN_PIDS" ]; then
       spawn_refuse_allocated_slot "it already held process ids $(printf '%s' "$SPAWN_FOREIGN_PIDS" | tr '\n' ' ' | sed 's/ $//') before this spawn started"
     fi
-    if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME"; then
+    if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME" "$STATE"; then
       echo "error: could not claim Treehouse pool slot $WT for task $ID; refusing to launch a worker whose slot cannot later be proved to be its own; inspect window $T" >&2
       exit 1
     fi

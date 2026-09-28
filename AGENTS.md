@@ -202,7 +202,8 @@ Fill the task subsections according to section 11.
 
 Spawn only through `bin/fm-spawn.sh` after the profile and backend checks in section 4.
 The spawn must resolve a genuine isolated task worktree distinct from the primary checkout; a failed isolation assertion stops the task.
-A refused spawn is not always worth retrying: an exhausted pool of working copies needs work landed or torn down first, while a refused copy can be retried for a different one, and `bin/fm-spawn.sh`'s header owns the exit codes that tell those apart.
+A refused pooled spawn is not a cue to retry: an exhausted pool needs work landed or torn down first, and a copy refused because another task holds it must be resolved at its holder - have that task land or tear down its work - because the pool offers that same held copy again until its holder returns it; `bin/fm-spawn.sh`'s header owns the exit codes that tell those apart.
+This is observed, not theoretical: the pool offered a secondmate the same wrong-owner copy repeatedly, its launcher refused every time, and only removing that copy from the pool - resolving its holder - cleared it, so retrying would have looped indefinitely.
 When the configured tasks-axi backlog gate applies, the spawn itself moves the work item to In flight and refuses rather than dispatching work this home has no item for, so recording the dispatch is never a separate step to remember; a manual-backend home retains the hand-editing contract in `docs/configuration.md`.
 After spawning, confirm the worker is processing the brief and handle any trust dialog through `harness-adapters`.
 A persistent secondmate is recorded in the secondmate registry and runtime state, never as a backlog work item.

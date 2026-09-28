@@ -267,8 +267,9 @@ fi
 POLL=${FM_POLL:-15}                   # seconds between cycles
 # The liveness beacon is touched at the top of every cycle and re-touched at the
 # item boundaries of the cycle's variable-length loops (watcher_beat_progress
-# below), so a healthy cycle's beacon ages at most BEAT_INTERVAL plus one step
-# plus POLL between touches - never the whole cycle's accumulated work.
+# below) and before the terminal wait, so a healthy cycle's beacon ages at most
+# BEAT_INTERVAL plus the longer of one step or POLL between touches - never the
+# whole cycle's accumulated work.
 # fm_poll_derived_grace (bin/fm-wake-lib.sh, already sourced transitively above)
 # is the single owner of the max(300, poll+60) derivation - see
 # docs/turnend-guard.md "Guard grace and the poll cadence".
@@ -287,9 +288,10 @@ WATCHER_STALL_BOUND=${FM_WATCHER_STALL_BOUND:-$((WATCHER_STALE_GRACE * 3))}
 # report a working watcher as down. It does so most readily on the homes with the
 # most to report, because their cycles are the longest. Derived as a fifth of the
 # grace, capped at 15s and floored at 1s, which keeps the worst age a live
-# watcher can show (BEAT_INTERVAL + one step + POLL) inside the grace for every
-# poll cadence: the largest bounded step is one custom check at CHECK_TIMEOUT
-# (30s), and 15 + 30 + POLL stays under max(300, POLL + 60).
+# watcher can show (BEAT_INTERVAL + max(one step, POLL)) inside the grace for
+# every poll cadence: the largest bounded step is one secondmate relaunch at
+# SECONDMATE_LIVENESS_TIMEOUT (120s), and both 15 + 120 and 15 + POLL stay under
+# max(300, POLL + 60).
 BEAT_INTERVAL=${FM_BEAT_INTERVAL:-$((WATCHER_STALE_GRACE / 5))}
 case "$BEAT_INTERVAL" in
   ''|*[!0-9]*|0) BEAT_INTERVAL=1 ;;
@@ -1064,6 +1066,9 @@ secondmate_liveness_tick() {
     id=${meta##*/}
     id=${id%.meta}
     case "$id" in ''|*[!A-Za-z0-9._-]*) continue ;; esac
+    # A relaunch is bounded by SECONDMATE_LIVENESS_TIMEOUT per mate, so this
+    # tick's length grows with the registered mates. Beat between them.
+    watcher_beat_progress
     fm_secondmate_liveness_lock "$id" || continue
     fm_secondmate_liveness_probe "$meta" "$id" poll
     bound_marker="$STATE/.secondmate-relaunch-bound-$id"
@@ -2702,7 +2707,7 @@ while :; do
   # parent reports, observe backend busy/idle turn completion, send one recovery
   # repost after grace, and escalate once if the recovery turn is also missed.
   # No conversation scraping; unresolved records are never silently expired.
-  fm_pending_reply_tick "$STATE" || true
+  fm_pending_reply_tick "$STATE" watcher_beat_progress || true
 
   # Endpoint liveness runs before queue observation: a positively dead or
   # missing secondmate endpoint is relaunched here on a bounded cadence, which
@@ -3282,6 +3287,8 @@ EOF
   fi
 
   # Terminal wait: a bounded native-event wait for push-capable homes (herdr),
-  # else the blind poll sleep. See event_wait_or_sleep.
+  # else the blind poll sleep. See event_wait_or_sleep. Beat first, so the wait
+  # never stacks on top of the cycle's last in-cycle step.
+  watcher_beat_progress
   event_wait_or_sleep
 done

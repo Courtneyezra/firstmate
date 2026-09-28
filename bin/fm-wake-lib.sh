@@ -1467,11 +1467,11 @@ fm_treehouse_slot_owner_marker() {  # <worktree>
 # (FM_STATE_OVERRIDE, as secondmate homes do), and a reader that looked only
 # under <home>/state would find no record for a live task and take its claim
 # for an orphan.
-fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home> <state-dir>
-  local worktree=$1 id=$2 home=$3 state=$4 marker tmp
+fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home> <state-dir> <project-dir> <epoch>
+  local worktree=$1 id=$2 home=$3 state=$4 project=$5 epoch=$6 marker tmp
   [ -n "$id" ] || return 1
   state=$(CDPATH='' cd -- "$state" 2>/dev/null && pwd -P) || return 1
-  fm_treehouse_slot_claimable "$worktree" "$id" "$home" || return 1
+  fm_treehouse_slot_claimable "$worktree" "$id" "$home" "$project" "$epoch" || return 1
   marker=$(fm_treehouse_slot_owner_marker "$worktree") || return 1
   # Only a plain claim file may be replaced: renaming onto a directory would
   # move the new claim inside it and leave the slot reading as unclaimable.
@@ -1487,6 +1487,9 @@ fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home> <state-dir>
     printf 'state=%s\n' "$state"
   } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$marker" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  if [ -n "$FM_TREEHOUSE_SLOT_STALE_NOTE" ]; then
+    echo "warning: replaced a stale slot claim for task $id: $FM_TREEHOUSE_SLOT_STALE_NOTE" >&2
+  fi
 }
 
 # Read the claim on a pool slot and compare it with a task id.
@@ -1583,16 +1586,23 @@ FM_POOL_BAD_SLOT_EXIT=76
 # an ORPHAN - its home is still here and the state directory the claim records
 # holds no record for the task it names - which is exactly what a spawn that
 # aborted after claiming its slot leaves. A claim that records no state
-# directory predates that field; its owner may keep records outside
-# <home>/state, so it can be proved held there but never proved stale, and it
-# refuses until its owner's next spawn or teardown rewrites or releases it.
+# directory predates that field, and a slot returned outside teardown keeps it,
+# so such orphans sit in live pools. Its owner may keep records outside
+# <home>/state, so an absent record there proves nothing alone, and a slot with
+# nothing running in it proves nothing alone either, since a live task can be
+# between turns; together they prove it stale. "Nothing running" is read from
+# Treehouse's scan through <project-dir>, ignoring only processes started since
+# <epoch>, which are the caller's own; a scan that cannot be read refuses.
+# FM_TREEHOUSE_SLOT_STALE_NOTE carries that evidence when such a claim is
+# accepted, so the replacement is reported rather than silent.
 # FM_TREEHOUSE_SLOT_BUSY carries the refusal reason, including the claim's own
 # path, so the caller can name the file an operator would inspect; a claim that
 # names this task id from another home names both homes, so a home that moved
 # reads as that rather than as a mystery.
-fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home>
-  local worktree=$1 id=$2 home=$3 owner_home owner_state owner_real home_real marker home_note=''
+fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home> <project-dir> <epoch>
+  local worktree=$1 id=$2 home=$3 project=$4 epoch=$5 owner_home owner_state owner_real home_real marker home_note='' legacy pids
   FM_TREEHOUSE_SLOT_BUSY=
+  FM_TREEHOUSE_SLOT_STALE_NOTE=
   fm_treehouse_slot_owner_state "$worktree" "$id"
   marker=$(fm_treehouse_slot_owner_marker "$worktree" 2>/dev/null || true)
   case "$FM_TREEHOUSE_SLOT_OWNER" in
@@ -1627,8 +1637,21 @@ fm_treehouse_slot_claimable() {  # <worktree> <task-id> <home>
     return 1
   fi
   if [ -z "$FM_TREEHOUSE_SLOT_OWNER_STATE" ]; then
-    FM_TREEHOUSE_SLOT_BUSY="task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home holds it and ${marker:-its claim} records no state directory to prove the claim stale$home_note"
-    return 1
+    legacy="task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home holds it through ${marker:-its claim}, which records no state directory; that claim is provably stale only when $owner_state holds no $FM_TREEHOUSE_SLOT_OWNER_ID.meta AND nothing is running in the slot"
+    case "$epoch" in
+      '' | *[!0-9]*) pids='' ; project='' ;;
+    esac
+    if [ -z "$project" ] || ! pids=$(fm_treehouse_slot_foreign_pids "$project" "$worktree" "$epoch"); then
+      FM_TREEHOUSE_SLOT_BUSY="$legacy, and what is running in the slot could not be read. Inspect ${marker:-the claim}; if task $FM_TREEHOUSE_SLOT_OWNER_ID no longer exists and the slot is idle, remove that claim$home_note"
+      return 1
+    fi
+    if [ -n "$pids" ]; then
+      FM_TREEHOUSE_SLOT_BUSY="$legacy, and it still holds process ids $(printf '%s' "$pids" | tr '\n' ' ' | sed 's/ $//'). If task $FM_TREEHOUSE_SLOT_OWNER_ID no longer exists, end those processes (\`treehouse return\` does) so the next spawn can prove ${marker:-the claim} stale$home_note"
+      return 1
+    fi
+    # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
+    FM_TREEHOUSE_SLOT_STALE_NOTE="${marker:-its claim} named task $FM_TREEHOUSE_SLOT_OWNER_ID of $owner_home and recorded no state directory, $owner_state held no $FM_TREEHOUSE_SLOT_OWNER_ID.meta, and the slot held no process"
+    return 0
   fi
   if [ ! -d "$owner_state" ]; then
     # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
@@ -1746,17 +1769,17 @@ EOF
 # refused, which the pool would hand straight back to anyone who asked again.
 # Returns 0 when such a slot exists, 1 when none does, and 2 when the pool
 # could not be read, which is not evidence either way.
-fm_treehouse_pool_has_free_slot() {  # <project-dir> <task-id> <home> [<except-worktree>]
-  local project=$1 id=$2 home=$3 except='' status paths path
-  if [ -n "${4:-}" ]; then
-    except=$(CDPATH='' cd -- "$4" 2>/dev/null && pwd -P) || except=$4
+fm_treehouse_pool_has_free_slot() {  # <project-dir> <task-id> <home> <epoch> [<except-worktree>]
+  local project=$1 id=$2 home=$3 epoch=$4 except='' status paths path
+  if [ -n "${5:-}" ]; then
+    except=$(CDPATH='' cd -- "$5" 2>/dev/null && pwd -P) || except=$5
   fi
   status=$(fm_treehouse_pool_status "$project") || return 2
   paths=$(printf '%s' "$status" |
     jq -r --arg except "$except" '.[]? | select(.status == "available" and .path != $except) | .path' 2>/dev/null) || return 2
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    fm_treehouse_slot_claimable "$path" "$id" "$home" && return 0
+    fm_treehouse_slot_claimable "$path" "$id" "$home" "$project" "$epoch" && return 0
   done <<EOF
 $paths
 EOF

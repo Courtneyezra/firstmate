@@ -271,27 +271,88 @@ test_live_task_with_state_outside_its_home_keeps_its_slot() {
   pass "a live task whose records live outside its home's state directory keeps its slot"
 }
 
-# A claim written before claims recorded a state directory cannot be proved
-# stale: its owner may keep records anywhere, so an absent record under
-# <home>/state proves nothing and the slot stays refused.
-test_legacy_claim_without_state_is_refused() {
+# legacy_claim_slot <task-id> <home> writes a claim from before claims recorded
+# a state directory, as a slot returned outside teardown still carries.
+legacy_claim_slot() {
+  printf 'task=%s\nhome=%s\n' "$1" "$2" > "$(dirname "$SLOT_DIR")/.fm-slot-owner"
+}
+
+# A legacy claim whose task record is gone from its home AND whose slot has
+# nothing running in it but this spawn's own shell is provably stale: it is
+# replaced, and the replacement is reported with both pieces of evidence.
+test_legacy_orphan_claim_on_an_idle_slot_is_replaced() {
   local rec id out status
-  id='pool-legacy-claim-a10'
-  rec=$(make_case legacy-claim "$id")
+  id='pool-legacy-orphan-a10'
+  rec=$(make_case legacy-orphan "$id")
   read_case_record "$rec"
-  write_pool_status --spare available
-  printf 'task=legacy-task\nhome=%s\n' "$OTHER_HOME" > "$(dirname "$SLOT_DIR")/.fm-slot-owner"
+  legacy_claim_slot legacy-task "$OTHER_HOME"
+  export FM_FAKE_TREEHOUSE_LIVE_PID_SLOT="$SLOT_DIR"
+
+  out=$(run_pool_spawn "$id")
+  status=$?
+  unset FM_FAKE_TREEHOUSE_LIVE_PID_SLOT
+  expect_code 0 "$status" \
+    "a legacy claim with no task record and an idle slot is stale"$'\n'"$out"
+  assert_grep "task=$id" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
+    "the spawn did not replace the stale legacy claim"
+  assert_contains "$out" "replaced a stale slot claim" \
+    "the replacement of a legacy claim was silent"
+  assert_contains "$out" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
+    "the replacement report did not name the claim file"
+  assert_contains "$out" "legacy-task.meta" \
+    "the replacement report did not name the absent task record"
+  assert_contains "$out" "held no process" \
+    "the replacement report did not say the slot was idle"
+  pass "a legacy orphan claim on an idle slot is replaced, and the replacement is reported"
+}
+
+# An absent record alone proves nothing for a legacy claim: its owner may keep
+# records elsewhere. A slot still holding a process stays refused, and the
+# refusal says what would make the claim provably stale.
+test_legacy_orphan_claim_on_an_occupied_slot_is_refused() {
+  local rec id out status
+  id='pool-legacy-occupied-a11'
+  rec=$(make_case legacy-occupied "$id")
+  read_case_record "$rec"
+  write_pool_status --spare available 1
+  legacy_claim_slot legacy-task "$OTHER_HOME"
 
   out=$(run_pool_spawn "$id")
   status=$?
   expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
-    "a claim recording no state directory cannot be proved stale"$'\n'"$out"
-  assert_contains "$out" "records no state directory" \
-    "the refusal did not say why the legacy claim could not be proved stale"
-  assert_not_launched "$id" "a legacy claim"
+    "a legacy claim on a slot holding a process cannot be proved stale"$'\n'"$out"
+  assert_contains "$out" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
+    "the refusal did not name the claim file to inspect"
+  assert_contains "$out" "nothing is running in the slot" \
+    "the refusal did not say what would make the claim provably stale"
+  assert_contains "$out" "treehouse return" \
+    "the refusal did not name the operator action"
+  assert_not_launched "$id" "a legacy claim on an occupied slot"
   assert_grep "task=legacy-task" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
     "the refused spawn overwrote a legacy claim"
-  pass "a legacy slot claim with no recorded state directory is refused, not replaced"
+  pass "a legacy claim on an occupied slot is refused with the action that clears it"
+}
+
+# A legacy claim whose task is still live in its home holds the slot.
+test_legacy_claim_of_a_live_task_is_refused() {
+  local rec id out status
+  id='pool-legacy-live-a12'
+  rec=$(make_case legacy-live "$id")
+  read_case_record "$rec"
+  write_pool_status --spare available
+  : > "$OTHER_HOME/state/legacy-task.meta"
+  legacy_claim_slot legacy-task "$OTHER_HOME"
+
+  out=$(run_pool_spawn "$id")
+  status=$?
+  expect_code "$POOL_BAD_SLOT_EXIT" "$status" \
+    "a legacy claim whose task is live must be refused"$'\n'"$out"
+  assert_contains "$out" "legacy-task" \
+    "the refusal did not name the live task holding the slot"
+  assert_not_launched "$id" "a live task's legacy claim"
+  assert_grep "task=legacy-task" "$(dirname "$SLOT_DIR")/.fm-slot-owner" \
+    "the refused spawn overwrote a live task's legacy claim"
+  pass "a legacy claim whose task is still live is refused"
 }
 
 # Claimable means proved free, never merely not-proved-busy: a home that is not
@@ -628,7 +689,9 @@ test_same_task_id_from_another_home_is_refused
 test_refusal_with_only_held_slots_left_reports_exhaustion
 test_orphan_claim_is_replaced
 test_live_task_with_state_outside_its_home_keeps_its_slot
-test_legacy_claim_without_state_is_refused
+test_legacy_orphan_claim_on_an_idle_slot_is_replaced
+test_legacy_orphan_claim_on_an_occupied_slot_is_refused
+test_legacy_claim_of_a_live_task_is_refused
 test_claim_whose_home_is_absent_is_refused
 test_slot_holding_a_stray_process_is_refused
 test_slot_holding_an_unreadable_process_is_refused

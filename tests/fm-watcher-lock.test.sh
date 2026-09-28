@@ -1430,6 +1430,10 @@ test_long_cycle_does_not_report_a_live_watcher_down() {
   fi
   is_live_non_zombie "$pid" \
     || fail "slow-cycle watcher exited during the sweep: $(cat "$dir/watch.err")"
+  # A short sample run would pass this case without ever observing a whole
+  # sweep, so the budget must have been spent rather than escaped.
+  [ "$i" -eq 80 ] \
+    || fail "sampling stopped after $i reads; the watcher stopped holding its own lock"
   kill "$pid" 2>/dev/null || true
   wait_for_exit "$pid" 100
   pass "a poll cycle longer than the grace keeps a live watcher's beacon fresh"
